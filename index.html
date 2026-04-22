@@ -1,0 +1,860 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Діагностика команди</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@300;400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+:root{
+  --bg:#f4f6fb;--s1:#ffffff;--s2:#eef1f8;
+  --border:#dde2f0;--border2:#c8d0e8;
+  --ink:#1a1d2e;--muted:#6b7280;--muted2:#9ca3af;
+  --accent:#e85d3a;--blue:#3b6ef5;--gold:#d97706;
+  --green:#059669;--purple:#7c3aed;
+  --head:'Syne',sans-serif;--mono:'JetBrains Mono',monospace;
+}
+*{margin:0;padding:0;box-sizing:border-box;}
+html{scroll-behavior:smooth;}
+body{background:var(--bg);color:var(--ink);font-family:var(--mono);min-height:100vh;overflow-x:hidden;}
+body::after{content:'';position:fixed;inset:0;
+  background:radial-gradient(ellipse 80% 50% at 50% -20%,rgba(59,110,245,0.05),transparent),
+             radial-gradient(ellipse 60% 40% at 80% 100%,rgba(124,58,237,0.03),transparent);
+  pointer-events:none;z-index:0;}
+.wrap{max-width:720px;margin:0 auto;padding:36px 18px 100px;position:relative;z-index:1;}
+
+/* HEADER */
+.top-bar{display:flex;align-items:center;justify-content:space-between;margin-bottom:32px;padding-bottom:20px;border-bottom:1px solid var(--border);}
+.logo{font-family:var(--head);font-size:clamp(16px,4vw,24px);font-weight:800;letter-spacing:-0.03em;}
+.logo span{color:var(--blue);}
+.formula-pill{font-size:10px;color:var(--muted);border:1px solid var(--border);border-radius:20px;padding:5px 12px;letter-spacing:0.04em;line-height:1.4;text-align:right;}
+.formula-pill strong{color:var(--gold);display:block;font-size:11px;}
+
+/* SCREENS */
+.screen{display:none;}
+.screen.active{display:block;animation:fadeup .3s ease;}
+@keyframes fadeup{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
+
+/* LANDING */
+.landing-title{font-family:var(--head);font-size:clamp(28px,7vw,52px);font-weight:800;line-height:1.05;letter-spacing:-0.03em;margin-bottom:16px;}
+.landing-title span{color:var(--blue);}
+.landing-sub{font-size:13px;color:var(--muted);line-height:1.7;margin-bottom:36px;max-width:500px;}
+.big-btns{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:24px;}
+.big-btn{padding:24px 16px;border:1.5px solid var(--border);border-radius:14px;background:var(--s1);cursor:pointer;transition:all .2s;text-align:center;width:100%;}
+.big-btn:hover{border-color:var(--blue);background:rgba(74,124,247,.06);transform:translateY(-2px);}
+.big-btn .icon{font-size:32px;margin-bottom:10px;}
+.big-btn .btn-title{font-family:var(--head);font-size:14px;font-weight:700;margin-bottom:4px;}
+.big-btn .btn-desc{font-size:11px;color:var(--muted);line-height:1.4;}
+
+/* PERIOD TABS */
+.period-tabs{display:grid;grid-template-columns:1fr 1fr;gap:4px;background:var(--s1);border:1px solid var(--border);border-radius:10px;padding:4px;margin-bottom:20px;}
+.ptab{padding:11px;border:none;background:transparent;border-radius:7px;font-family:var(--mono);font-size:12px;color:var(--muted);cursor:pointer;transition:all .2s;letter-spacing:0.05em;}
+.ptab.active{background:var(--blue);color:#fff;box-shadow:0 2px 8px rgba(59,110,245,.3);}
+
+/* FORM */
+.screen-title{font-family:var(--head);font-size:20px;font-weight:800;margin-bottom:6px;}
+.screen-sub{font-size:12px;color:var(--muted);margin-bottom:24px;line-height:1.6;}
+.progress-bar-wrap{height:3px;background:var(--border);border-radius:2px;margin-bottom:24px;overflow:hidden;}
+.progress-bar-fill{height:100%;background:linear-gradient(90deg,var(--blue),var(--purple));border-radius:2px;transition:width .3s;}
+.sec-divider{display:flex;align-items:center;gap:10px;margin:28px 0 14px;}
+.sec-line{flex:1;height:1px;background:var(--border);}
+.sec-tag{font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:var(--muted);white-space:nowrap;padding:3px 10px;border:1px solid var(--border);border-radius:20px;}
+.qcard{background:var(--s1);border:1px solid var(--border);border-radius:12px;padding:20px;margin-bottom:10px;transition:border-color .2s;}
+.qcard:hover{border-color:var(--border2);}
+.qcard.touched{border-color:rgba(74,124,247,.4);}
+.qcard.special{border-left:3px solid var(--gold);}
+.q-meta{display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap;}
+.q-num{font-size:10px;color:var(--muted);font-weight:600;}
+.q-factor{font-size:10px;color:var(--blue);letter-spacing:.1em;text-transform:uppercase;padding:2px 7px;background:rgba(74,124,247,.1);border-radius:10px;}
+.q-badge{font-size:10px;color:var(--gold);background:rgba(240,180,41,.1);border-radius:10px;padding:2px 7px;}
+.q-text{font-family:var(--head);font-size:14px;font-weight:600;line-height:1.5;margin-bottom:8px;}
+.q-hint{font-size:11px;color:var(--muted);line-height:1.5;margin-bottom:14px;}
+.slider-ends{display:flex;justify-content:space-between;font-size:10px;color:var(--muted2);margin-bottom:6px;}
+.slider-row{display:flex;align-items:center;gap:12px;}
+input[type=range]{flex:1;-webkit-appearance:none;height:3px;background:var(--border);border-radius:2px;outline:none;cursor:pointer;}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:20px;height:20px;border-radius:50%;background:var(--blue);cursor:pointer;border:3px solid #fff;box-shadow:0 0 8px rgba(74,124,247,.4);transition:transform .1s;}
+input[type=range]::-webkit-slider-thumb:hover{transform:scale(1.2);}
+.qcard.special input[type=range]::-webkit-slider-thumb{background:var(--gold);box-shadow:0 0 8px rgba(240,180,41,.4);}
+.sv{font-family:var(--head);font-size:22px;font-weight:800;min-width:28px;text-align:right;color:var(--blue);}
+.qcard.special .sv{color:var(--gold);}
+
+/* BUTTONS */
+.submit-btn{width:100%;padding:16px;background:linear-gradient(135deg,var(--blue),var(--purple));border:none;border-radius:10px;font-family:var(--head);font-size:14px;font-weight:700;letter-spacing:.05em;color:#fff;cursor:pointer;transition:all .2s;margin-top:24px;box-shadow:0 4px 20px rgba(59,110,245,.25);}
+.submit-btn:hover{transform:translateY(-2px);box-shadow:0 8px 30px rgba(74,124,247,.35);}
+.submit-btn:disabled{opacity:.5;cursor:not-allowed;transform:none;}
+.back-btn{background:transparent;border:1px solid var(--border);border-radius:8px;padding:9px 16px;font-family:var(--mono);font-size:12px;color:var(--muted);cursor:pointer;transition:all .15s;margin-bottom:20px;display:inline-block;}
+.back-btn:hover{border-color:var(--border2);color:var(--ink);}
+
+/* SUCCESS */
+.success-block{text-align:center;padding:56px 20px;}
+.success-icon{font-size:64px;margin-bottom:20px;}
+.success-title{font-family:var(--head);font-size:26px;font-weight:800;margin-bottom:10px;}
+.success-sub{font-size:13px;color:var(--muted);line-height:1.7;max-width:400px;margin:0 auto;}
+
+/* DASHBOARD */
+.dash-title{font-family:var(--head);font-size:22px;font-weight:800;margin-bottom:4px;}
+.dash-sub{font-size:12px;color:var(--muted);margin-bottom:20px;}
+.dash-top{display:flex;align-items:center;gap:8px;margin-bottom:20px;flex-wrap:wrap;}
+.refresh-btn{padding:8px 14px;background:transparent;border:1px solid var(--border);border-radius:8px;font-family:var(--mono);font-size:11px;color:var(--muted);cursor:pointer;transition:all .15s;margin-left:auto;}
+.refresh-btn:hover{border-color:var(--blue);color:var(--blue);}
+
+/* SCORE HERO */
+.score-hero{text-align:center;padding:28px 0 20px;border-bottom:1px solid var(--border);margin-bottom:24px;}
+.score-who{font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:var(--muted);margin-bottom:8px;}
+.score-num{font-family:var(--head);font-size:clamp(56px,14vw,96px);font-weight:800;line-height:1;letter-spacing:-.04em;}
+.score-max{font-size:12px;color:var(--muted);margin-top:4px;}
+.score-cnt{font-size:11px;color:var(--muted);margin-top:6px;padding:4px 12px;background:var(--s2);border-radius:20px;display:inline-block;}
+
+/* FACTOR BARS */
+.block-label{font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:var(--muted);margin-bottom:12px;margin-top:24px;}
+.frow{display:grid;grid-template-columns:120px 1fr 36px;align-items:center;gap:10px;margin-bottom:9px;}
+.fname{font-size:11px;color:var(--muted);text-align:right;line-height:1.3;}
+.fname strong{display:block;font-family:var(--head);font-size:12px;color:var(--ink);}
+.fbar-bg{height:10px;background:var(--s2);border-radius:5px;overflow:hidden;}
+.fbar-fg{height:100%;border-radius:5px;transition:width .8s cubic-bezier(.16,1,.3,1);}
+.fval{font-family:var(--head);font-size:13px;font-weight:800;text-align:right;}
+
+/* INSIGHTS */
+.insights{display:flex;flex-direction:column;gap:8px;margin-bottom:24px;}
+.ins{padding:12px 14px 12px 16px;border-radius:8px;font-size:13px;line-height:1.55;border-left:3px solid;}
+.ins.crit{border-color:var(--accent);background:rgba(232,93,58,.07);}
+.ins.warn{border-color:var(--gold);background:rgba(240,180,41,.07);}
+.ins.good{border-color:var(--green);background:rgba(52,214,142,.06);}
+.ins-tag{font-size:10px;letter-spacing:.15em;text-transform:uppercase;font-weight:700;margin-bottom:3px;}
+.ins.crit .ins-tag{color:var(--accent);}
+.ins.warn .ins-tag{color:var(--gold);}
+.ins.good .ins-tag{color:var(--green);}
+
+/* SPREAD TABLE */
+.stbl-wrap{margin-bottom:24px;overflow-x:auto;}
+.stbl{width:100%;border-collapse:collapse;font-size:12px;}
+.stbl th{font-family:var(--head);font-size:10px;letter-spacing:.12em;text-transform:uppercase;padding:6px 8px;border-bottom:1px solid var(--border);text-align:left;color:var(--muted);}
+.stbl td{padding:8px;border-bottom:1px solid rgba(42,42,66,.5);vertical-align:middle;}
+.stbl td:first-child{font-family:var(--head);font-size:12px;font-weight:700;}
+.minis{display:flex;gap:3px;flex-wrap:wrap;}
+.mini{width:22px;height:22px;border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;font-family:var(--head);color:#000;}
+.savg{font-family:var(--head);font-weight:800;font-size:14px;}
+.chip{display:inline-block;padding:2px 7px;border-radius:10px;font-size:10px;font-weight:700;}
+.chip.hi{background:rgba(232,93,58,.15);color:var(--accent);}
+.chip.md{background:rgba(240,180,41,.15);color:var(--gold);}
+.chip.lo{background:rgba(52,214,142,.1);color:var(--green);}
+
+/* COMPARE */
+.cmp-block{margin-bottom:24px;}
+.cmp-row{display:grid;grid-template-columns:100px 1fr;gap:8px;margin-bottom:10px;align-items:start;}
+.cmp-key{font-size:11px;color:var(--muted);text-align:right;padding-top:4px;}
+.cmp-bars{display:flex;flex-direction:column;gap:4px;}
+.cbar{display:flex;align-items:center;gap:6px;}
+.cwho{font-size:9px;width:60px;color:var(--muted);flex-shrink:0;}
+.cbg{flex:1;height:8px;background:var(--s2);border-radius:4px;overflow:hidden;}
+.cfg{height:100%;border-radius:4px;transition:width .7s;}
+.cval{font-size:11px;font-weight:700;font-family:var(--head);min-width:24px;}
+.gap-note{padding:10px 14px;background:var(--s1);border-radius:8px;border:1px solid var(--border);font-size:11px;color:var(--muted);line-height:1.6;margin-top:10px;font-style:italic;}
+
+/* DELTA */
+.delta-block{background:var(--s1);border:1px solid var(--border);border-radius:12px;padding:18px;margin-bottom:24px;}
+.delta-head{font-family:var(--head);font-size:13px;font-weight:700;margin-bottom:14px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
+.drow{display:grid;grid-template-columns:100px 1fr 1fr 44px;gap:8px;align-items:center;margin-bottom:7px;}
+.dkey{font-size:11px;color:var(--muted);text-align:right;}
+.dbg{height:6px;background:var(--border);border-radius:3px;overflow:hidden;}
+.dfg{height:100%;border-radius:3px;transition:width .7s;}
+.dval{font-family:var(--head);font-size:12px;font-weight:800;text-align:center;}
+.dpos{color:var(--green);}.dneg{color:var(--accent);}.dneu{color:var(--muted);}
+
+/* WAITING / LOADING */
+.waiting-block{text-align:center;padding:48px 20px;color:var(--muted);}
+.waiting-icon{font-size:48px;margin-bottom:14px;}
+.waiting-text{font-size:13px;line-height:1.7;}
+.loading{display:flex;align-items:center;justify-content:center;gap:8px;padding:48px;color:var(--muted);font-size:13px;}
+.spinner{width:20px;height:20px;border:2px solid var(--border);border-top-color:var(--blue);border-radius:50%;animation:spin .8s linear infinite;}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* NOTE */
+.note{padding:12px 14px;background:rgba(74,124,247,.06);border:1.5px dashed rgba(74,124,247,.25);border-radius:8px;font-size:12px;color:rgba(74,124,247,.8);margin-bottom:18px;line-height:1.6;}
+.section-divider{border-top:1px solid var(--border);margin:24px 0;}
+
+@media(max-width:520px){
+  .big-btns{grid-template-columns:1fr;}
+  .frow{grid-template-columns:90px 1fr 30px;}
+  .drow{grid-template-columns:80px 1fr 1fr 36px;}
+  .cmp-row{grid-template-columns:80px 1fr;}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<div class="top-bar">
+  <div class="logo">КОМАНДА<span>.</span>S</div>
+  <div class="formula-pill">
+    <strong>S = [Σ(V×R)] × A × T × C × L × (1−f)</strong>
+    trickymonkey.shop
+  </div>
+</div>
+
+<!-- ══ LANDING ══ -->
+<div class="screen active" id="screen-landing">
+  <div class="landing-title">Діагностика<br><span>сили</span> команди</div>
+  <p class="landing-sub">Анонімне опитування для оцінки ефективності команди. Кожен заповнює зі свого пристрою — результати збираються автоматично.</p>
+  <div class="big-btns">
+    <button class="big-btn" onclick="goTo('screen-period')">
+      <div class="icon">👥</div>
+      <div class="btn-title">Я — учасник команди</div>
+      <div class="btn-desc">Анонімна оцінка зсередини. 16 питань, ~8 хвилин</div>
+    </button>
+    <button class="big-btn" onclick="askPassword()">
+      <div class="icon">🎯</div>
+      <div class="btn-title">Я — керівник</div>
+      <div class="btn-desc">17 питань + дашборд результатів команди</div>
+    </button>
+  </div>
+</div>
+
+<!-- ══ TEAM: PERIOD SELECT ══ -->
+<div class="screen" id="screen-period">
+  <button class="back-btn" onclick="goTo('screen-landing')">← Назад</button>
+  <div class="screen-title">Який вимір?</div>
+  <p class="screen-sub">Ми вимірюємо команду двічі — до і після заходів розвитку. Обери потрібний.</p>
+  <div class="period-tabs">
+    <button class="ptab active" id="pt-before" onclick="selectPeriod('before')">📍 До заходів</button>
+    <button class="ptab" id="pt-after" onclick="selectPeriod('after')">🚀 Після заходів</button>
+  </div>
+  <button class="submit-btn" onclick="startTeamForm()">Почати опитування →</button>
+</div>
+
+<!-- ══ TEAM: FORM ══ -->
+<div class="screen" id="screen-team-form">
+  <div class="progress-bar-wrap"><div class="progress-bar-fill" id="team-prog" style="width:6%"></div></div>
+  <div id="team-q-container"></div>
+  <button class="submit-btn" id="team-sub-btn" onclick="submitTeam()">Надіслати відповіді →</button>
+</div>
+
+<!-- ══ SUCCESS ══ -->
+<div class="screen" id="screen-success">
+  <div class="success-block">
+    <div class="success-icon">✅</div>
+    <div class="success-title">Дякуємо!</div>
+    <p class="success-sub">Твої відповіді збережено анонімно.<br><br>Керівник побачить зведені результати після того, як всі учасники заповнять опитування.</p>
+  </div>
+</div>
+
+<!-- ══ LEADER: PERIOD SELECT ══ -->
+<div class="screen" id="screen-leader-period">
+  <button class="back-btn" onclick="goTo('screen-landing')">← Назад</button>
+  <div class="screen-title">🎯 Оцінка керівника</div>
+  <p class="screen-sub">Спочатку обери вимір, потім заповни свою оцінку і одразу побачиш дашборд.</p>
+  <div class="period-tabs">
+    <button class="ptab active" id="lpt-before" onclick="selectLeaderPeriod('before')">📍 До заходів</button>
+    <button class="ptab" id="lpt-after" onclick="selectLeaderPeriod('after')">🚀 Після заходів</button>
+  </div>
+  <button class="submit-btn" onclick="startLeaderForm()">Заповнити оцінку →</button>
+  <div style="margin-top:12px;">
+    <button class="submit-btn" style="background:var(--s2);box-shadow:none;border:1px solid var(--border);" onclick="goToDashboard()">Переглянути дашборд →</button>
+  </div>
+</div>
+
+<!-- ══ LEADER: FORM ══ -->
+<div class="screen" id="screen-leader-form">
+  <div class="progress-bar-wrap"><div class="progress-bar-fill" id="leader-prog" style="width:6%"></div></div>
+  <div id="leader-q-container"></div>
+  <button class="submit-btn" id="leader-sub-btn" onclick="submitLeader()">Зберегти та переглянути дашборд →</button>
+</div>
+
+<!-- ══ DASHBOARD ══ -->
+<div class="screen" id="screen-dashboard">
+  <div class="dash-title">📊 Дашборд керівника</div>
+  <div class="dash-sub">Зведені результати команди в реальному часі</div>
+  <div class="dash-top">
+    <div class="period-tabs" style="margin:0;flex:1;min-width:200px;">
+      <button class="ptab active" id="dpt-before" onclick="switchDashPeriod('before')">📍 До заходів</button>
+      <button class="ptab" id="dpt-after" onclick="switchDashPeriod('after')">🚀 Після заходів</button>
+    </div>
+    <button class="refresh-btn" onclick="loadDashboard()">↻ Оновити</button>
+    <button class="back-btn" style="margin:0;" onclick="goTo('screen-landing')">← Головна</button>
+  </div>
+  <div id="dashboard-content">
+    <div class="loading"><div class="spinner"></div>&nbsp;Завантаження...</div>
+  </div>
+</div>
+
+</div><!-- /wrap -->
+<script>
+// ════════════════════════════════════════════════
+// SUPABASE INIT
+// ════════════════════════════════════════════════
+const SUPA_URL = 'https://pawiarlnhqrpfnxfxevt.supabase.co';
+const SUPA_KEY = 'sb_publishable_2xBAYTEEehbu51aoJX17AQ_AyZ2OcVA';
+const db = supabase.createClient(SUPA_URL, SUPA_KEY);
+
+// ════════════════════════════════════════════════
+// QUESTIONS
+// ════════════════════════════════════════════════
+const QS_TEAM = [
+  {n:1,f:'V',s:'ЛЮДИ — РІВЕНЬ (V)',
+   text:'Наскільки люди в команді компетентні у своїх областях?',
+   hint:'0 — більшість не справляється зі своїми завданнями\n10 — люди сильні, знають свою справу',lo:'Не справляються',hi:'Фахівці'},
+  {n:2,f:'V',s:'ЛЮДИ — РІВЕНЬ (V)',
+   text:'Наскільки стабільно кожен видає результат без постійного нагляду?',
+   hint:'0 — потрібен постійний контроль\n10 — автономні, результат стабільний',lo:'Лише під контролем',hi:'Повна автономія'},
+  {n:3,f:'R',s:'ВІДПОВІДНІСТЬ РОЛЯМ (R)',
+   text:'Наскільки кожен займається тим, що відповідає його сильним сторонам?',
+   hint:'0 — люди роблять те, що не їхнє\n10 — кожен на ролі де він найкращий',lo:'Не на місці',hi:'Ідеальне попадання'},
+  {n:4,f:'R',s:'ВІДПОВІДНІСТЬ РОЛЯМ (R)',spec:true,
+   text:'Чи є в команді люди, чий потенціал явно використовується не повністю?',
+   hint:'↕ Інвертоване: 0 = є нерозкриті люди, 10 = всі на максимумі',lo:'Є нерозкриті',hi:'Всі на максимумі'},
+  {n:5,f:'A',s:'УЗГОДЖЕНІСТЬ ЦІЛЕЙ (A)',
+   text:'Наскільки кожен чітко розуміє спільну ціль команди?',
+   hint:'0 — кожен у своєму тумані\n10 — ціль зрозуміла і прийнята кожним',lo:'Туман',hi:'Кришталева ясність'},
+  {n:6,f:'A',s:'УЗГОДЖЕНІСТЬ ЦІЛЕЙ (A)',
+   text:'Наскільки щоденні пріоритети узгоджені із загальною ціллю?',
+   hint:'0 — кожен зайнятий своїм, зв\'язок із ціллю розмитий\n10 — кожне завдання наближає до результату',lo:'Розфокус',hi:'Єдиний напрямок'},
+  {n:7,f:'T',s:'ДОВІРА (T)',
+   text:'Наскільки ти довіряєш колегам — що вони зроблять те, що обіцяли?',
+   hint:'0 — постійно перевіряю, не впевнений\n10 — слово = дія, завжди',lo:'Недовіра',hi:'Абсолютна довіра'},
+  {n:8,f:'T',s:'ДОВІРА (T)',
+   text:'Наскільки в команді можна відкрито сказати незручну правду без наслідків?',
+   hint:'0 — люди мовчать, бояться реакції\n10 — будь-яка думка може бути висловлена безпечно',lo:'Мовчимо',hi:'Повна відкритість'},
+  {n:9,f:'T',s:'ДОВІРА (T)',
+   text:'Наскільки ти довіряєш рішенням керівника?',
+   hint:'0 — сумніваюсь у більшості рішень\n10 — повністю довіряю логіці і намірам',lo:'Сумніваюсь',hi:'Повна довіра'},
+  {n:10,f:'C',s:'КОМУНІКАЦІЯ (C)',
+   text:'Наскільки швидко важлива інформація доходить до тих, хто її потребує?',
+   hint:'0 — дізнаємось із запізненням або випадково\n10 — потрібне знають всі вчасно',lo:'Запізнення',hi:'Миттєво'},
+  {n:11,f:'C',s:'КОМУНІКАЦІЯ (C)',
+   text:'Наскільки рідко виникають непорозуміння через нечітку або неповну інформацію?',
+   hint:'0 — постійні переграш, уточнення, помилки\n10 — все зрозуміло з першого разу',lo:'Постійний хаос',hi:'Ніколи'},
+  {n:12,f:'L',s:'ЛІДЕРСТВО / РІШЕННЯ (L)',
+   text:'Наскільки чітко і своєчасно приймаються рішення в команді?',
+   hint:'0 — рішення зависають, ніхто не бере відповідальність\n10 — є чіткий процес, рішення швидкі',lo:'Зависають',hi:'Блискавично'},
+  {n:13,f:'L',s:'ЛІДЕРСТВО / РІШЕННЯ (L)',
+   text:'Наскільки ефективно команда діє в нестандартних або кризових ситуаціях?',
+   hint:'0 — розгубленість, хаос, очікування вказівок\n10 — команда самоорганізовується і вирішує',lo:'Паралізовані',hi:'Адаптивні'},
+  {n:14,f:'f',s:'ВТРАТИ / ФРІКЦІЯ (F)',spec:true,
+   text:'Який відсоток твого часу йде на речі, які не наближають до результату?',
+   hint:'⚠ Вище = більше втрат\nЗайві зустрічі, очікування, бюрократія...\n0 — майже немає\n10 — більша частина часу витрачена даремно',lo:'0% — все в діло',hi:'100% — холоста'},
+  {n:15,f:'f',s:'ВТРАТИ / ФРІКЦІЯ (F)',spec:true,
+   text:'Наскільки рідко виникають конфлікти або напруженість, що заважають роботі?',
+   hint:'⚠ Вище = менше втрат від конфліктів\n0 — постійна напруга\n10 — майже ніколи',lo:'Постійна напруга',hi:'Спокій'},
+  {n:16,f:'f',s:'ВТРАТИ / ФРІКЦІЯ (F)',spec:true,
+   text:'Наскільки чіткий розподіл відповідальності — без дублювання і провалів?',
+   hint:'⚠ Нечіткі межі = втрати\n0 — хаос, дублювання\n10 — кожен знає свою зону точно',lo:'Хаос зон',hi:'Кристальна чіткість'},
+];
+
+const QS_LEADER = [
+  {n:1,f:'V',s:'ЛЮДИ — РІВЕНЬ (V)',
+   text:'Наскільки люди в команді компетентні у своїх областях?',
+   hint:'0 — більшість не справляється\n10 — сильна команда фахівців',lo:'Не справляються',hi:'Фахівці'},
+  {n:2,f:'V',s:'ЛЮДИ — РІВЕНЬ (V)',
+   text:'Наскільки стабільно команда видає результат без постійного нагляду?',
+   hint:'0 — без мене все зупиняється\n10 — команда повністю автономна',lo:'Без мене — стоп',hi:'Повна автономія'},
+  {n:3,f:'R',s:'ВІДПОВІДНІСТЬ РОЛЯМ (R)',
+   text:'Наскільки кожна людина поставлена на роль, де вона найсильніша?',
+   hint:'0 — більшість не на своїх місцях\n10 — кожен там, де дає максимум',lo:'Не на місці',hi:'Ідеально'},
+  {n:4,f:'R',s:'ВІДПОВІДНІСТЬ РОЛЯМ (R)',spec:true,
+   text:'Чи є в команді люди, чий потенціал явно використовується не повністю?',
+   hint:'↕ Інвертоване: 0 = є нерозкриті люди, 10 = всі на максимумі',lo:'Є нерозкриті',hi:'Всі на максимумі'},
+  {n:5,f:'A',s:'УЗГОДЖЕНІСТЬ ЦІЛЕЙ (A)',
+   text:'Наскільки команда реально розуміє і поділяє спільну ціль?',
+   hint:'0 — кожен у своєму світі\n10 — ціль прийнята і зрозуміла всім',lo:'Туман',hi:'Єдина ціль'},
+  {n:6,f:'A',s:'УЗГОДЖЕНІСТЬ ЦІЛЕЙ (A)',
+   text:'Наскільки щоденні пріоритети команди узгоджені із загальним напрямком?',
+   hint:'0 — зв\'язок із ціллю розмитий\n10 — кожен крок наближає до результату',lo:'Розфокус',hi:'Точний вектор'},
+  {n:7,f:'T',s:'ДОВІРА (T)',
+   text:'Наскільки в команді є взаємна довіра між учасниками?',
+   hint:'0 — взаємна підозра, перевірки\n10 — слово = дія, колеги довіряють одне одному',lo:'Підозра',hi:'Повна довіра'},
+  {n:8,f:'T',s:'ДОВІРА (T)',
+   text:'Наскільки люди довіряють тобі як керівнику?',
+   hint:'0 — відчуваю скептицизм і опір до рішень\n10 — команда йде за мною без вагань',lo:'Скептицизм',hi:'Повна довіра'},
+  {n:9,f:'T',s:'ДОВІРА (T)',
+   text:'Наскільки люди відкрито кажуть тобі незручну правду?',
+   hint:'0 — кажуть тільки те що хочу почути\n10 — отримую чесний зворотний зв\'язок завжди',lo:'Мовчать',hi:'Повна чесність'},
+  {n:10,f:'C',s:'КОМУНІКАЦІЯ (C)',
+   text:'Наскільки швидко важлива інформація доходить до потрібних людей?',
+   hint:'0 — запізнення, провали в комунікації\n10 — все доходить вчасно і точно',lo:'Запізнення',hi:'Миттєво'},
+  {n:11,f:'C',s:'КОМУНІКАЦІЯ (C)',
+   text:'Наскільки рідко виникають непорозуміння через нечітку комунікацію?',
+   hint:'0 — постійні переграш і уточнення\n10 — все зрозуміло з першого разу',lo:'Постійний хаос',hi:'Ніколи'},
+  {n:12,f:'L',s:'ЛІДЕРСТВО / РІШЕННЯ (L)',
+   text:'Наскільки чітко і своєчасно ти сам приймаєш рішення?',
+   hint:'0 — затягую, сумніваюсь, рішення зависають\n10 — рішення швидкі, чіткі, зрозумілі команді',lo:'Затягую',hi:'Блискавично'},
+  {n:13,f:'L',s:'ЛІДЕРСТВО / РІШЕННЯ (L)',
+   text:'Наскільки ефективно команда діє без тебе в нестандартних ситуаціях?',
+   hint:'0 — без мене розгубленість\n10 — команда самодостатня і вирішує',lo:'Залежні від мене',hi:'Самодостатні'},
+  {n:14,f:'f',s:'ВТРАТИ / ФРІКЦІЯ (F)',spec:true,
+   text:'Який відсоток часу і ресурсу команди іде не у результат?',
+   hint:'⚠ Вище = більше втрат\nЗайві зустрічі, бюрократія, дублювання...\n0 — мінімум\n10 — більшість ресурсу в порожнечу',lo:'0% — все в діло',hi:'100% — холоста'},
+  {n:15,f:'f',s:'ВТРАТИ / ФРІКЦІЯ (F)',spec:true,
+   text:'Наскільки рідко в команді виникають конфлікти або напруженість?',
+   hint:'⚠ Вище = менше конфліктів = менше втрат\n0 — постійна напруга\n10 — спокійна продуктивна атмосфера',lo:'Постійна напруга',hi:'Спокій'},
+  {n:16,f:'f',s:'ВТРАТИ / ФРІКЦІЯ (F)',spec:true,
+   text:'Наскільки чіткий розподіл відповідальності у команді?',
+   hint:'⚠ Нечіткість = втрати\n0 — хаос, дублювання, провали між зонами\n10 — кожен знає свою зону точно',lo:'Хаос зон',hi:'Кристальна чіткість'},
+  {n:17,f:'f',s:'ВТРАТИ / ФРІКЦІЯ (F)',spec:true,
+   text:'Наскільки часто твої власні дії як керівника є джерелом фрікції?',
+   hint:'⚠ Вище = менше твоєї фрікції = менше втрат\n0 — часто я сам джерело проблем\n10 — майже ніколи',lo:'Я — джерело хаосу',hi:'Я — джерело порядку'},
+];
+
+// ════════════════════════════════════════════════
+// STATE
+// ════════════════════════════════════════════════
+let st = {
+  period: 'before',
+  leaderPeriod: 'before',
+  dashPeriod: 'before',
+  teamVals: {},
+  leaderVals: {},
+};
+
+// ════════════════════════════════════════════════
+// NAVIGATION
+// ════════════════════════════════════════════════
+function goTo(id) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  window.scrollTo({top:0, behavior:'smooth'});
+}
+
+function selectPeriod(p) {
+  st.period = p;
+  document.getElementById('pt-before').classList.toggle('active', p==='before');
+  document.getElementById('pt-after').classList.toggle('active', p==='after');
+}
+
+function selectLeaderPeriod(p) {
+  st.leaderPeriod = p;
+  document.getElementById('lpt-before').classList.toggle('active', p==='before');
+  document.getElementById('lpt-after').classList.toggle('active', p==='after');
+}
+
+function switchDashPeriod(p) {
+  st.dashPeriod = p;
+  document.getElementById('dpt-before').classList.toggle('active', p==='before');
+  document.getElementById('dpt-after').classList.toggle('active', p==='after');
+  loadDashboard();
+}
+
+// ════════════════════════════════════════════════
+// RENDER QUESTIONS
+// ════════════════════════════════════════════════
+function renderQuestions(qs, containerId, progId, valsObj) {
+  let html = '';
+  let lastSec = '';
+  qs.forEach(q => {
+    if (q.s !== lastSec) {
+      lastSec = q.s;
+      html += `<div class="sec-divider"><div class="sec-line"></div><div class="sec-tag">${q.s}</div><div class="sec-line"></div></div>`;
+    }
+    const key = `${q.f}_${q.n}`;
+    valsObj[key] = 5;
+    const specBadge = q.spec ? '<span class="q-badge">↕ особливе</span>' : '';
+    html += `<div class="qcard ${q.spec?'special':''}" id="qc-${key}">
+      <div class="q-meta">
+        <span class="q-num">${q.n}.</span>
+        <span class="q-factor">${q.f}</span>
+        ${specBadge}
+      </div>
+      <div class="q-text">${q.text}</div>
+      ${q.hint ? `<div class="q-hint">${q.hint.replace(/\n/g,'<br>')}</div>` : ''}
+      <div class="slider-ends"><span>${q.lo}</span><span>${q.hi}</span></div>
+      <div class="slider-row">
+        <input type="range" min="0" max="10" step="1" value="5"
+          id="sl-${key}" oninput="onSlide('${key}',this.value,'${progId}',${qs.length})">
+        <div class="sv" id="sv-${key}">5</div>
+      </div>
+    </div>`;
+  });
+  document.getElementById(containerId).innerHTML = html;
+}
+
+function onSlide(key, v, progId, total) {
+  document.getElementById('sv-'+key).textContent = v;
+  document.getElementById('qc-'+key).classList.add('touched');
+  // count touched
+  const touched = document.querySelectorAll(`#${progId.replace('prog','')}-q-container .qcard.touched`).length;
+  document.getElementById(progId).style.width = Math.max(6, touched/total*100) + '%';
+}
+
+// ════════════════════════════════════════════════
+// START FORMS
+// ════════════════════════════════════════════════
+function startTeamForm() {
+  st.teamVals = {};
+  renderQuestions(QS_TEAM, 'team-q-container', 'team-prog', st.teamVals);
+  goTo('screen-team-form');
+}
+
+function startLeaderForm() {
+  st.leaderVals = {};
+  renderQuestions(QS_LEADER, 'leader-q-container', 'leader-prog', st.leaderVals);
+  goTo('screen-leader-form');
+}
+
+function goToDashboard() {
+  st.dashPeriod = st.leaderPeriod;
+  document.getElementById('dpt-before').classList.toggle('active', st.dashPeriod==='before');
+  document.getElementById('dpt-after').classList.toggle('active', st.dashPeriod==='after');
+  goTo('screen-dashboard');
+  loadDashboard();
+}
+
+// ════════════════════════════════════════════════
+// READ SLIDERS
+// ════════════════════════════════════════════════
+function readSliders(qs, valsObj) {
+  qs.forEach(q => {
+    const key = `${q.f}_${q.n}`;
+    const el = document.getElementById('sl-'+key);
+    if (el) valsObj[key] = parseFloat(el.value);
+  });
+}
+
+// ════════════════════════════════════════════════
+// SUBMIT
+// ════════════════════════════════════════════════
+async function submitTeam() {
+  const btn = document.getElementById('team-sub-btn');
+  btn.disabled = true;
+  btn.textContent = 'Зберігаємо...';
+  readSliders(QS_TEAM, st.teamVals);
+  const { error } = await db.from('responses').insert({
+    period: st.period,
+    role: 'team',
+    answers: st.teamVals,
+  });
+  if (error) {
+    btn.disabled = false;
+    btn.textContent = 'Надіслати відповіді →';
+    alert('Помилка збереження: ' + error.message);
+    return;
+  }
+  goTo('screen-success');
+}
+
+async function submitLeader() {
+  const btn = document.getElementById('leader-sub-btn');
+  btn.disabled = true;
+  btn.textContent = 'Зберігаємо...';
+  readSliders(QS_LEADER, st.leaderVals);
+  // Delete previous leader response for same period, then insert
+  await db.from('responses').delete().eq('period', st.leaderPeriod).eq('role', 'leader');
+  const { error } = await db.from('responses').insert({
+    period: st.leaderPeriod,
+    role: 'leader',
+    answers: st.leaderVals,
+  });
+  if (error) {
+    btn.disabled = false;
+    btn.textContent = 'Зберегти та переглянути дашборд →';
+    alert('Помилка збереження: ' + error.message);
+    return;
+  }
+  goToDashboard();
+}
+
+// ════════════════════════════════════════════════
+// DASHBOARD
+// ════════════════════════════════════════════════
+async function loadDashboard() {
+  document.getElementById('dashboard-content').innerHTML =
+    '<div class="loading"><div class="spinner"></div>&nbsp;Завантаження...</div>';
+
+  const { data, error } = await db.from('responses')
+    .select('*')
+    .eq('period', st.dashPeriod)
+    .order('created_at', { ascending: true });
+
+  if (error) {
+    document.getElementById('dashboard-content').innerHTML =
+      `<div class="waiting-block"><div class="waiting-icon">⚠️</div><div class="waiting-text">Помилка: ${error.message}</div></div>`;
+    return;
+  }
+
+  const teamRows = data.filter(r => r.role === 'team');
+  const leaderRow = data.find(r => r.role === 'leader');
+
+  if (teamRows.length === 0 && !leaderRow) {
+    document.getElementById('dashboard-content').innerHTML =
+      `<div class="waiting-block"><div class="waiting-icon">⏳</div>
+      <div class="waiting-text">Поки що немає відповідей для цього виміру.<br><br>Надішліть посилання учасникам — як тільки заповнять, дані з'являться тут.</div></div>`;
+    return;
+  }
+
+  // Compute
+  const teamAvgF = teamRows.length ? avgRespFactors(teamRows.map(r=>r.answers)) : null;
+  const teamCalc = teamAvgF ? calcS(teamAvgF) : null;
+  const leaderF = leaderRow ? aggFactors(leaderRow.answers) : null;
+  const leaderCalc = leaderF ? calcS(leaderF) : null;
+
+  // Load other period for delta
+  const otherPeriod = st.dashPeriod === 'before' ? 'after' : 'before';
+  const { data: otherData } = await db.from('responses').select('*').eq('period', otherPeriod).eq('role','team');
+  const otherTeamRows = otherData || [];
+  const otherAvgF = otherTeamRows.length ? avgRespFactors(otherTeamRows.map(r=>r.answers)) : null;
+  const otherCalc = otherAvgF ? calcS(otherAvgF) : null;
+
+  let html = '';
+
+  // TEAM SCORE
+  if (teamCalc) {
+    html += `<div class="score-hero">
+      <div class="score-who">👥 СЕРЕДНЯ ОЦІНКА КОМАНДИ</div>
+      <div class="score-num" style="color:${scoreColor(teamCalc.S)}">${teamCalc.S.toFixed(1)}</div>
+      <div class="score-max">/ 100 — інтегральна сила</div>
+      <div class="score-cnt">${teamRows.length} учасників відповіли · ${st.dashPeriod==='before'?'До заходів':'Після заходів'}</div>
+    </div>`;
+    html += factorBarsHtml(teamCalc, 'Профіль факторів — команда');
+    html += insightsHtml(teamCalc);
+    html += spreadTableHtml(teamRows);
+  }
+
+  // LEADER SCORE
+  if (leaderCalc) {
+    html += `<div class="section-divider"></div>`;
+    html += `<div class="score-hero">
+      <div class="score-who">🎯 ОЦІНКА КЕРІВНИКА</div>
+      <div class="score-num" style="color:${scoreColor(leaderCalc.S)}">${leaderCalc.S.toFixed(1)}</div>
+      <div class="score-max">/ 100 — інтегральна сила</div>
+    </div>`;
+    html += factorBarsHtml(leaderCalc, 'Профіль факторів — керівник');
+  }
+
+  // COMPARE
+  if (teamCalc && leaderCalc) {
+    html += `<div class="section-divider"></div>`;
+    html += compareHtml(teamAvgF, leaderF, teamCalc, leaderCalc);
+  }
+
+  // DELTA before/after
+  if (teamCalc && otherCalc) {
+    html += `<div class="section-divider"></div>`;
+    html += deltaHtml(teamCalc, otherCalc, teamAvgF, otherAvgF);
+  }
+
+  document.getElementById('dashboard-content').innerHTML = html;
+}
+
+// ════════════════════════════════════════════════
+// CALC
+// ════════════════════════════════════════════════
+function aggFactors(raw) {
+  // raw: { 'V_1': num, ... }
+  const g = {V:[],R:[],A:[],T:[],C:[],L:[],f:[]};
+  Object.entries(raw).forEach(([k,v]) => {
+    const fk = k.split('_')[0];
+    if (g[fk]) g[fk].push(v);
+  });
+  const out = {};
+  Object.keys(g).forEach(fk => {
+    out[fk] = g[fk].length ? g[fk].reduce((s,x)=>s+x,0)/g[fk].length : 5;
+  });
+  return out;
+}
+
+function avgRespFactors(arrOfRaw) {
+  const agged = arrOfRaw.map(aggFactors);
+  const keys = ['V','R','A','T','C','L','f'];
+  const out = {};
+  keys.forEach(k => { out[k] = agged.reduce((s,a)=>s+(a[k]||0),0)/agged.length; });
+  return out;
+}
+
+function calcS(f) {
+  const n = k => (f[k]||0)/10;
+  const base = n('V')*n('R');
+  const mult = n('A')*n('T')*n('C')*n('L')*(1-n('f'));
+  return {S:base*mult*100, base, V:n('V'),R:n('R'),A:n('A'),T:n('T'),C:n('C'),L:n('L'),f:n('f')};
+}
+
+// ════════════════════════════════════════════════
+// COLOR HELPERS
+// ════════════════════════════════════════════════
+function scoreColor(s){ return s>=55?'#34d68e':s>=28?'#f0b429':'#e85d3a'; }
+function barColor(v, inv=false){ const x=inv?(1-v):v; return x>=0.7?'#34d68e':x>=0.45?'#f0b429':'#e85d3a'; }
+function miniColor(v, isF=false){ const x=isF?(10-v):v; return x>=7?'#34d68e':x>=4?'#f0b429':'#e85d3a'; }
+
+// ════════════════════════════════════════════════
+// RENDER COMPONENTS
+// ════════════════════════════════════════════════
+function factorBarsHtml(calc, label) {
+  const rows = [
+    {label:'Базова потужність',sub:'V×R',val:calc.base},
+    {label:'Узгодженість',sub:'A',val:calc.A},
+    {label:'Довіра',sub:'T',val:calc.T},
+    {label:'Комунікація',sub:'C',val:calc.C},
+    {label:'Лідерство',sub:'L',val:calc.L},
+    {label:'Без втрат',sub:'1−f',val:1-calc.f,inv:true},
+  ];
+  let html = `<div class="block-label">${label}</div>`;
+  rows.forEach(r => {
+    const c = barColor(r.val, r.inv);
+    html += `<div class="frow">
+      <div class="fname"><strong>${r.label}</strong>${r.sub}</div>
+      <div class="fbar-bg"><div class="fbar-fg" style="width:${r.val*100}%;background:${c}"></div></div>
+      <div class="fval" style="color:${c}">${(r.val*10).toFixed(1)}</div>
+    </div>`;
+  });
+  return html;
+}
+
+function insightsHtml(calc) {
+  const items = [];
+  const m = {A:calc.A,T:calc.T,C:calc.C,L:calc.L};
+  const nm = {A:'Узгодженість цілей',T:'Довіра',C:'Комунікація',L:'Лідерство'};
+  const sorted = Object.entries(m).sort((a,b)=>a[1]-b[1]);
+  const low = sorted[0], high = sorted[sorted.length-1];
+
+  if (low[1]<0.5) items.push({t:'crit',tag:'⚡ КРИТИЧНЕ ВУЗЬКЕ МІСЦЕ',
+    txt:`<strong>${nm[low[0]]}</strong> (${(low[1]*10).toFixed(1)}/10) — найнижчий множник системи. Навіть ідеальне все решта не компенсує. Починати зміни тут.`});
+  if (calc.f>0.4) items.push({t:'crit',tag:'🔥 ВИСОКА ФРІКЦІЯ',
+    txt:`<strong>${Math.round(calc.f*100)}%</strong> ресурсу йде у втрати. Найбільший приріст — через усунення втрат, а не додавання нового.`});
+  if (calc.base<0.35) items.push({t:'warn',tag:'⚠ БАЗОВА ПОТУЖНІСТЬ',
+    txt:`V×R = <strong>${(calc.base*10).toFixed(1)}</strong> — нижче середнього. Або люди ще не на потрібному рівні, або не розставлені по ролях.`});
+  if (calc.T<0.5&&calc.C<0.5) items.push({t:'warn',tag:'🧊 ЗАМОРОЖЕНИЙ СТАН',
+    txt:`Довіра і комунікація одночасно низькі — типовий стан «замерзлої» команди. Вони підсилюють одне одного в обидва боки.`});
+  if (high[1]>=0.75) items.push({t:'good',tag:'✓ ТОЧКА ОПОРИ',
+    txt:`<strong>${nm[high[0]]}</strong> (${(high[1]*10).toFixed(1)}/10) — найсильніший множник. Спирайтесь на це при будь-яких змінах.`});
+  if (!items.length && calc.S>=45) items.push({t:'good',tag:'✓ ХОРОШИЙ СТАН',
+    txt:`S = <strong>${calc.S.toFixed(1)}</strong> — команда вище середнього. Є міцна база для росту.`});
+
+  return `<div class="insights">${items.map(i=>`<div class="ins ${i.t}"><div class="ins-tag">${i.tag}</div>${i.txt}</div>`).join('')}</div>`;
+}
+
+function spreadTableHtml(rows) {
+  if (rows.length < 2) return '';
+  const fkeys = ['V','R','A','T','C','L','f'];
+  const fname = {V:'Рівень (V)',R:'Ролі (R)',A:'Узгодженість',T:'Довіра',C:'Комунікація',L:'Лідерство',f:'Втрати (F)'};
+  const agged = rows.map(r => aggFactors(r.answers));
+
+  let html = `<div class="block-label">Розкид оцінок учасників</div>
+  <div class="stbl-wrap"><table class="stbl">
+    <thead><tr><th>Фактор</th><th>Оцінки</th><th>Середнє</th><th>Розкид</th></tr></thead><tbody>`;
+
+  fkeys.forEach(k => {
+    const vals = agged.map(a => a[k]||0);
+    const mn = Math.min(...vals), mx = Math.max(...vals);
+    const spread = mx-mn;
+    const sc = spread>=4?'hi':spread>=2?'md':'lo';
+    const avg = vals.reduce((s,v)=>s+v,0)/vals.length;
+    const minis = vals.map(v=>`<div class="mini" style="background:${miniColor(v,k==='f')}">${v.toFixed(1)}</div>`).join('');
+    html += `<tr>
+      <td>${fname[k]}</td>
+      <td><div class="minis">${minis}</div></td>
+      <td><span class="savg">${avg.toFixed(1)}</span></td>
+      <td><span class="chip ${sc}">${spread>=0.5?'±'+spread.toFixed(1):'—'}</span></td>
+    </tr>`;
+  });
+  return html + '</tbody></table></div>';
+}
+
+function compareHtml(teamF, leadF, teamCalc, leadCalc) {
+  const fkeys = ['V','R','A','T','C','L','f'];
+  const fname = {V:'Рівень (V)',R:'Ролі (R)',A:'Узгодженість',T:'Довіра',C:'Комунікація',L:'Лідерство',f:'Втрати'};
+  const dS = Math.abs(teamCalc.S-leadCalc.S);
+  const dSc = dS>=15?'hi':dS>=8?'md':'lo';
+
+  let html = `<div class="block-label">Команда vs Керівник <span class="chip ${dSc}" style="margin-left:6px;">∆S = ${dS.toFixed(1)}</span></div>
+  <div class="cmp-block">`;
+
+  fkeys.forEach(k => {
+    const tv = teamF[k]||0, lv = leadF[k]||0;
+    const gap = Math.abs(tv-lv);
+    const gc = gap>=3?'hi':gap>=2?'md':'lo';
+    const tc = barColor(tv/10, k==='f'), lc = barColor(lv/10, k==='f');
+    html += `<div class="cmp-row">
+      <div class="cmp-key">${fname[k]}</div>
+      <div class="cmp-bars">
+        <div class="cbar"><span class="cwho">👥 команда</span>
+          <div class="cbg"><div class="cfg" style="width:${tv*10}%;background:${tc}"></div></div>
+          <span class="cval">${tv.toFixed(1)}</span>
+          ${gap>=2?`<span class="chip ${gc}" style="margin-left:4px;">∆${gap.toFixed(1)}</span>`:''}
+        </div>
+        <div class="cbar"><span class="cwho">🎯 керівник</span>
+          <div class="cbg"><div class="cfg" style="width:${lv*10}%;background:${lc}"></div></div>
+          <span class="cval">${lv.toFixed(1)}</span>
+        </div>
+      </div>
+    </div>`;
+  });
+
+  html += `<div class="gap-note">Розрив ∆ ≥ 3 між оцінками команди і керівника — діагноз сам по собі: або сліпа зона, або різні очікування, або брак прозорості.</div>
+  </div>`;
+  return html;
+}
+
+function deltaHtml(calcNow, calcOther, fNow, fOther) {
+  const isB = st.dashPeriod==='before';
+  const bC=isB?calcNow:calcOther, aC=isB?calcOther:calcNow;
+  const bF=isB?fNow:fOther, aF=isB?fOther:fNow;
+  const dS = aC.S-bC.S;
+  const sign = dS>=0?'+':'';
+  const dCls = dS>=5?'dpos':dS<=-5?'dneg':'dneu';
+  const fkeys = ['V','R','A','T','C','L','f'];
+  const fname = {V:'Люди (V)',R:'Ролі (R)',A:'Узгодженість',T:'Довіра',C:'Комунікація',L:'Лідерство',f:'Втрати'};
+
+  let html = `<div class="delta-block">
+    <div class="delta-head">📊 Динаміка до → після
+      <span class="dval ${dCls}" style="font-size:18px;">${sign}${dS.toFixed(1)}</span>
+      <span style="font-size:11px;color:var(--muted)">S: ${bC.S.toFixed(1)} → ${aC.S.toFixed(1)}</span>
+    </div>
+    <div style="display:grid;grid-template-columns:100px 1fr 1fr 44px;gap:8px;font-size:10px;color:var(--muted);margin-bottom:8px;">
+      <div></div><div>До</div><div>Після</div><div>∆</div>
+    </div>`;
+
+  fkeys.forEach(k => {
+    const bv=bF[k]||0, av=aF[k]||0;
+    const d=av-bv;
+    const s2=d>0?'+':'';
+    const dc=k==='f'?(d<0?'dpos':d>0?'dneg':'dneu'):(d>0?'dpos':d<0?'dneg':'dneu');
+    html += `<div class="drow">
+      <div class="dkey">${fname[k]}</div>
+      <div class="dbg"><div class="dfg" style="width:${bv*10}%;background:var(--muted)"></div></div>
+      <div class="dbg"><div class="dfg" style="width:${av*10}%;background:var(--blue)"></div></div>
+      <div class="dval ${dc}">${s2}${d.toFixed(1)}</div>
+    </div>`;
+  });
+  return html + '</div>';
+}
+
+// PASSWORD
+const LEADER_PASSWORD = "trickymonkey2025";
+function askPassword() {
+  const m = document.getElementById("pwd-modal");
+  m.style.display = "flex";
+  document.getElementById("pwd-input").value = "";
+  document.getElementById("pwd-error").textContent = "";
+  setTimeout(() => document.getElementById("pwd-input").focus(), 100);
+}
+function closePwdModal() {
+  document.getElementById("pwd-modal").style.display = "none";
+}
+function checkPassword() {
+  const val = document.getElementById("pwd-input").value;
+  if (val === LEADER_PASSWORD) {
+    closePwdModal();
+    goTo("screen-leader-period");
+  } else {
+    document.getElementById("pwd-error").textContent = "❌ Невірний пароль";
+    document.getElementById("pwd-input").value = "";
+    document.getElementById("pwd-input").focus();
+  }
+}
+</script>
+<!-- PASSWORD MODAL -->
+<div id="pwd-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:999;align-items:center;justify-content:center;padding:20px;">
+  <div style="background:#ffffff;border:1px solid #dde2f0;border-radius:16px;padding:32px;max-width:360px;width:100%;text-align:center;">
+    <div style="font-size:36px;margin-bottom:16px;">🔐</div>
+    <div style="font-family:Syne,sans-serif;font-size:18px;font-weight:800;color:#1a1d2e;margin-bottom:8px;">Доступ керівника</div>
+    <div style="font-size:12px;color:#6b6b8e;margin-bottom:24px;line-height:1.6;">Цей розділ доступний тільки керівнику</div>
+    <input type="password" id="pwd-input" placeholder="Введи пароль"
+      style="width:100%;padding:12px 16px;background:#f4f6fb;border:1px solid #dde2f0;border-radius:8px;color:#1a1d2e;font-family:JetBrains Mono,monospace;font-size:14px;margin-bottom:8px;outline:none;box-sizing:border-box;"
+      onkeydown="if(event.key==='Enter') checkPassword()">
+    <div id="pwd-error" style="font-size:11px;color:#e85d3a;margin-bottom:12px;min-height:16px;"></div>
+    <div style="display:flex;gap:8px;">
+      <button onclick="closePwdModal()" style="flex:1;padding:12px;background:transparent;border:1px solid #dde2f0;border-radius:8px;font-family:JetBrains Mono,monospace;font-size:12px;color:#6b7280;cursor:pointer;">Скасувати</button>
+      <button onclick="checkPassword()" style="flex:1;padding:12px;background:linear-gradient(135deg,#4a7cf7,#9b6dff);border:none;border-radius:8px;font-family:Syne,sans-serif;font-size:13px;font-weight:700;color:#fff;cursor:pointer;">Увійти →</button>
+    </div>
+  </div>
+</div>
+</body>
+</html>
