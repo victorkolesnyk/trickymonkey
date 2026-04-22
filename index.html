@@ -3,33 +3,83 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Діагностика команди</title>
-<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@300;400;500;600&display=swap" rel="stylesheet">
+<title>RENOVATEAM — Діагностика команди</title>
+<!-- Helvetica system font -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
 :root{
-  --bg:#f4f6fb;--s1:#ffffff;--s2:#eef1f8;
-  --border:#dde2f0;--border2:#c8d0e8;
-  --ink:#1a1d2e;--muted:#6b7280;--muted2:#9ca3af;
-  --accent:#e85d3a;--blue:#3b6ef5;--gold:#d97706;
-  --green:#059669;--purple:#7c3aed;
-  --head:'Syne',sans-serif;--mono:'JetBrains Mono',monospace;
+  --bg:#f5f5f5;--s1:#ffffff;--s2:#f0f0f0;
+  --border:#e0e0e0;--border2:#cccccc;
+  --ink:#0a0a0a;--muted:#555555;--muted2:#888888;
+  --accent:#00e676;--blue:#00e676;--gold:#00e676;
+  --green:#00e676;--purple:#00c853;
+  --head:Helvetica Neue,Helvetica,Arial,sans-serif;
+  --mono:Helvetica Neue,Helvetica,Arial,sans-serif;
 }
 *{margin:0;padding:0;box-sizing:border-box;}
 html{scroll-behavior:smooth;}
-body{background:var(--bg);color:var(--ink);font-family:var(--mono);min-height:100vh;overflow-x:hidden;}
+body{background:var(--bg);color:var(--ink);font-family:var(--head);min-height:100vh;overflow-x:hidden;}
 body::after{content:'';position:fixed;inset:0;
-  background:radial-gradient(ellipse 80% 50% at 50% -20%,rgba(59,110,245,0.05),transparent),
-             radial-gradient(ellipse 60% 40% at 80% 100%,rgba(124,58,237,0.03),transparent);
+  background:radial-gradient(ellipse 80% 50% at 50% -10%,rgba(0,230,118,0.06),transparent);
   pointer-events:none;z-index:0;}
-.wrap{max-width:720px;margin:0 auto;padding:36px 18px 100px;position:relative;z-index:1;}
+.wrap{max-width:720px;margin:0 auto;padding:0 18px 100px;position:relative;z-index:1;}
 
-/* HEADER */
-.top-bar{display:flex;align-items:center;justify-content:space-between;margin-bottom:32px;padding-bottom:20px;border-bottom:1px solid var(--border);}
-.logo{font-family:var(--head);font-size:clamp(16px,4vw,24px);font-weight:800;letter-spacing:-0.03em;}
-.logo span{color:var(--blue);}
-.formula-pill{font-size:10px;color:var(--muted);border:1px solid var(--border);border-radius:20px;padding:5px 12px;letter-spacing:0.04em;line-height:1.4;text-align:right;}
-.formula-pill strong{color:var(--gold);display:block;font-size:11px;}
+
+/* METHODOLOGY */
+.methodology{padding:0;}
+.meth-title{font-size:11px;font-weight:700;letter-spacing:0.15em;text-transform:uppercase;color:var(--muted);margin-bottom:12px;}
+.meth-intro{font-size:12px;color:var(--muted);line-height:1.7;margin-bottom:16px;}
+.meth-formula-line{font-size:clamp(11px,2.5vw,14px);font-weight:700;color:var(--green);background:#0a0a0a;border-radius:8px;padding:12px 20px;text-align:center;letter-spacing:0.04em;margin-bottom:16px;}
+.meth-factors{display:flex;flex-direction:column;gap:8px;margin-bottom:16px;}
+.meth-factor{display:grid;grid-template-columns:64px 1fr;gap:12px;background:var(--s1);border:1px solid var(--border);border-radius:8px;padding:12px 14px;align-items:start;}
+.meth-factor-f{border-left:2px solid #888;}
+.meth-factor-left{text-align:center;padding-top:2px;}
+.meth-var{display:block;font-size:22px;font-weight:800;color:var(--green);line-height:1;}
+.meth-var-f{color:#888;}
+.meth-var-name{display:block;font-size:9px;letter-spacing:0.1em;text-transform:uppercase;color:var(--muted2);margin-top:2px;}
+.meth-factor-right{font-size:12px;color:var(--muted);line-height:1.6;}
+.meth-factor-right strong{display:block;font-size:13px;color:var(--ink);font-weight:700;margin-bottom:3px;}
+.meth-note{display:flex;gap:10px;align-items:flex-start;background:rgba(0,230,118,.06);border:1px solid rgba(0,230,118,.2);border-radius:8px;padding:12px 14px;font-size:12px;color:var(--muted);line-height:1.6;}
+.meth-note-mark{font-size:16px;font-weight:800;color:var(--green);flex-shrink:0;line-height:1.4;}
+
+/* ENTRY SCREEN */
+.entry-wrap{min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px 20px;text-align:center;}
+.entry-logo{font-size:clamp(22px,5vw,32px);font-weight:800;letter-spacing:0.08em;text-transform:uppercase;margin-bottom:24px;color:var(--ink);}
+.entry-formula-big{font-size:clamp(13px,3vw,18px);font-weight:700;color:var(--green);background:#0a0a0a;border-radius:10px;padding:16px 24px;display:inline-block;margin-bottom:8px;letter-spacing:0.04em;font-family:var(--head);}
+.entry-formula-sub{font-size:11px;color:var(--muted);margin-bottom:32px;letter-spacing:0.08em;text-transform:uppercase;}
+.entry-about{display:flex;flex-direction:column;gap:10px;max-width:440px;margin:0 auto 28px;text-align:left;}
+.about-block{display:flex;gap:16px;align-items:flex-start;background:var(--s1);border:1px solid var(--border);border-radius:8px;padding:14px 16px;}
+.about-num{font-size:20px;font-weight:800;color:var(--green);flex-shrink:0;line-height:1;font-family:var(--head);width:28px;}
+.about-text{font-size:12px;color:var(--muted);line-height:1.6;}
+.about-text strong{display:block;font-size:13px;color:var(--ink);margin-bottom:3px;font-weight:700;}
+.entry-divider{width:100%;max-width:440px;height:1px;background:var(--border);margin:0 auto 24px;}
+.entry-pwd-label{font-size:12px;font-weight:700;margin-bottom:10px;letter-spacing:0.1em;text-transform:uppercase;color:var(--muted);}
+.entry-input{width:100%;max-width:280px;padding:14px 18px;background:var(--s1);border:2px solid var(--border);border-radius:8px;font-size:20px;color:var(--ink);outline:none;text-align:center;letter-spacing:0.3em;transition:border-color .2s;margin-bottom:6px;display:block;margin-left:auto;margin-right:auto;}
+.entry-input:focus{border-color:var(--green);}
+.entry-error{font-size:12px;color:#ff4444;min-height:18px;margin-bottom:10px;}
+.entry-btn{padding:14px 48px;background:var(--green);border:none;border-radius:8px;font-size:15px;font-weight:700;color:#0a0a0a;cursor:pointer;transition:all .2s;letter-spacing:0.05em;}
+.entry-btn:disabled{opacity:.4;cursor:not-allowed;transform:none !important;}
+.entry-btn:not(:disabled):hover{transform:translateY(-2px);box-shadow:0 6px 20px rgba(0,230,118,.35);}
+.human-check{margin-bottom:16px;}
+.human-label{display:flex;align-items:center;gap:10px;cursor:pointer;font-size:13px;color:var(--ink);font-weight:600;user-select:none;justify-content:center;}
+.human-label input[type=checkbox]{display:none;}
+.human-box{width:20px;height:20px;border:2px solid var(--border);border-radius:4px;background:var(--s1);flex-shrink:0;transition:all .15s;display:flex;align-items:center;justify-content:center;}
+.human-label input:checked + .human-box{background:var(--green);border-color:var(--green);}
+.human-label input:checked + .human-box::after{content:"✓";color:#0a0a0a;font-size:12px;font-weight:800;}
+.human-text{font-size:13px;}
+
+/* LANDING */
+.landing-topbar{padding:20px 0 16px;border-bottom:1px solid var(--border);margin-bottom:24px;text-align:center;}
+.landing-formula{font-size:13px;font-weight:700;color:var(--green);background:#0a0a0a;border-radius:8px;padding:10px 20px;display:inline-block;letter-spacing:0.04em;}
+.landing-hero{margin-bottom:24px;}
+.role-cards{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:24px;}
+.role-card{padding:28px 20px 52px;border-radius:10px;border:1.5px solid var(--border);background:var(--s1);cursor:pointer;transition:all .2s;text-align:left;position:relative;overflow:hidden;width:100%;}
+.role-card:hover{transform:translateY(-3px);box-shadow:0 8px 20px rgba(0,0,0,.1);border-color:var(--green);}
+.role-card-num{font-size:28px;font-weight:800;color:var(--green);margin-bottom:12px;display:block;line-height:1;}
+.role-card-title{font-size:15px;font-weight:800;color:var(--ink);margin-bottom:6px;line-height:1.2;}
+.role-card-sub{font-size:12px;color:var(--muted);margin-bottom:12px;line-height:1.5;}
+.role-card-meta{font-size:11px;color:var(--muted2);padding:3px 8px;background:var(--bg);border-radius:4px;display:inline-block;}
+.role-card-arrow{position:absolute;bottom:18px;right:18px;font-size:20px;color:var(--green);font-weight:700;}
 
 /* SCREENS */
 .screen{display:none;}
@@ -37,54 +87,50 @@ body::after{content:'';position:fixed;inset:0;
 @keyframes fadeup{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
 
 /* LANDING */
-.landing-title{font-family:var(--head);font-size:clamp(28px,7vw,52px);font-weight:800;line-height:1.05;letter-spacing:-0.03em;margin-bottom:16px;}
-.landing-title span{color:var(--blue);}
-.landing-sub{font-size:13px;color:var(--muted);line-height:1.7;margin-bottom:36px;max-width:500px;}
-.big-btns{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:24px;}
-.big-btn{padding:24px 16px;border:1.5px solid var(--border);border-radius:14px;background:var(--s1);cursor:pointer;transition:all .2s;text-align:center;width:100%;}
-.big-btn:hover{border-color:var(--blue);background:rgba(74,124,247,.06);transform:translateY(-2px);}
-.big-btn .icon{font-size:32px;margin-bottom:10px;}
-.big-btn .btn-title{font-family:var(--head);font-size:14px;font-weight:700;margin-bottom:4px;}
-.big-btn .btn-desc{font-size:11px;color:var(--muted);line-height:1.4;}
+.landing-title{font-size:clamp(28px,7vw,48px);font-weight:800;line-height:1.05;letter-spacing:-0.02em;margin-bottom:12px;}
+.landing-title span{color:var(--green);}
+.landing-sub{font-size:13px;color:var(--muted);line-height:1.7;margin-bottom:28px;max-width:500px;}
+.logo{font-size:clamp(14px,3.5vw,20px);font-weight:800;letter-spacing:0.08em;text-transform:uppercase;}
+.logo span{color:var(--green);}
 
 /* PERIOD TABS */
 .period-tabs{display:grid;grid-template-columns:1fr 1fr;gap:4px;background:var(--s1);border:1px solid var(--border);border-radius:10px;padding:4px;margin-bottom:20px;}
 .ptab{padding:11px;border:none;background:transparent;border-radius:7px;font-family:var(--mono);font-size:12px;color:var(--muted);cursor:pointer;transition:all .2s;letter-spacing:0.05em;}
-.ptab.active{background:var(--blue);color:#fff;box-shadow:0 2px 8px rgba(59,110,245,.3);}
+.ptab.active{background:#0a0a0a;color:var(--green);box-shadow:0 2px 8px rgba(0,0,0,.15);}
 
 /* FORM */
 .screen-title{font-family:var(--head);font-size:20px;font-weight:800;margin-bottom:6px;}
 .screen-sub{font-size:12px;color:var(--muted);margin-bottom:24px;line-height:1.6;}
 .progress-bar-wrap{height:3px;background:var(--border);border-radius:2px;margin-bottom:24px;overflow:hidden;}
-.progress-bar-fill{height:100%;background:linear-gradient(90deg,var(--blue),var(--purple));border-radius:2px;transition:width .3s;}
+.progress-bar-fill{height:100%;background:var(--green);border-radius:2px;transition:width .3s;}
 .sec-divider{display:flex;align-items:center;gap:10px;margin:28px 0 14px;}
 .sec-line{flex:1;height:1px;background:var(--border);}
 .sec-tag{font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:var(--muted);white-space:nowrap;padding:3px 10px;border:1px solid var(--border);border-radius:20px;}
 .qcard{background:var(--s1);border:1px solid var(--border);border-radius:12px;padding:20px;margin-bottom:10px;transition:border-color .2s;}
 .qcard:hover{border-color:var(--border2);}
-.qcard.touched{border-color:rgba(74,124,247,.4);}
-.qcard.special{border-left:3px solid var(--gold);}
+.qcard.touched{border-color:var(--green);}
+.qcard.special{border-left:3px solid #aaa;}
 .q-meta{display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap;}
 .q-num{font-size:10px;color:var(--muted);font-weight:600;}
-.q-factor{font-size:10px;color:var(--blue);letter-spacing:.1em;text-transform:uppercase;padding:2px 7px;background:rgba(74,124,247,.1);border-radius:10px;}
+.q-factor{font-size:10px;color:var(--green);letter-spacing:.1em;text-transform:uppercase;padding:2px 7px;background:rgba(0,230,118,.1);border-radius:4px;font-weight:700;}
 .q-badge{font-size:10px;color:var(--gold);background:rgba(240,180,41,.1);border-radius:10px;padding:2px 7px;}
 .q-text{font-family:var(--head);font-size:14px;font-weight:600;line-height:1.5;margin-bottom:8px;}
 .q-hint{font-size:11px;color:var(--muted);line-height:1.5;margin-bottom:14px;}
 .slider-ends{display:flex;justify-content:space-between;font-size:10px;color:var(--muted2);margin-bottom:6px;}
 .slider-row{display:flex;align-items:center;gap:12px;}
 input[type=range]{flex:1;-webkit-appearance:none;height:3px;background:var(--border);border-radius:2px;outline:none;cursor:pointer;}
-input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:20px;height:20px;border-radius:50%;background:var(--blue);cursor:pointer;border:3px solid #fff;box-shadow:0 0 8px rgba(74,124,247,.4);transition:transform .1s;}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:20px;height:20px;border-radius:50%;background:var(--green);cursor:pointer;border:3px solid #fff;box-shadow:0 0 8px rgba(0,230,118,.4);transition:transform .1s;}
 input[type=range]::-webkit-slider-thumb:hover{transform:scale(1.2);}
-.qcard.special input[type=range]::-webkit-slider-thumb{background:var(--gold);box-shadow:0 0 8px rgba(240,180,41,.4);}
-.sv{font-family:var(--head);font-size:22px;font-weight:800;min-width:28px;text-align:right;color:var(--blue);}
-.qcard.special .sv{color:var(--gold);}
+.qcard.special input[type=range]::-webkit-slider-thumb{background:#888;box-shadow:none;}
+.sv{font-size:22px;font-weight:800;min-width:28px;text-align:right;color:var(--green);}
+.qcard.special .sv{color:#555;}
 
 /* BUTTONS */
-.submit-btn{width:100%;padding:16px;background:linear-gradient(135deg,var(--blue),var(--purple));border:none;border-radius:10px;font-family:var(--head);font-size:14px;font-weight:700;letter-spacing:.05em;color:#fff;cursor:pointer;transition:all .2s;margin-top:24px;box-shadow:0 4px 20px rgba(59,110,245,.25);}
-.submit-btn:hover{transform:translateY(-2px);box-shadow:0 8px 30px rgba(74,124,247,.35);}
+.submit-btn{width:100%;padding:16px;background:var(--green);border:none;border-radius:8px;font-size:14px;font-weight:700;letter-spacing:.06em;color:#0a0a0a;cursor:pointer;transition:all .2s;margin-top:24px;}
+.submit-btn:hover{transform:translateY(-2px);box-shadow:0 6px 20px rgba(0,230,118,.3);}
 .submit-btn:disabled{opacity:.5;cursor:not-allowed;transform:none;}
 .back-btn{background:transparent;border:1px solid var(--border);border-radius:8px;padding:9px 16px;font-family:var(--mono);font-size:12px;color:var(--muted);cursor:pointer;transition:all .15s;margin-bottom:20px;display:inline-block;}
-.back-btn:hover{border-color:var(--border2);color:var(--ink);}
+.back-btn:hover{border-color:var(--green);color:var(--ink);}
 
 /* SUCCESS */
 .success-block{text-align:center;padding:56px 20px;}
@@ -97,14 +143,14 @@ input[type=range]::-webkit-slider-thumb:hover{transform:scale(1.2);}
 .dash-sub{font-size:12px;color:var(--muted);margin-bottom:20px;}
 .dash-top{display:flex;align-items:center;gap:8px;margin-bottom:20px;flex-wrap:wrap;}
 .refresh-btn{padding:8px 14px;background:transparent;border:1px solid var(--border);border-radius:8px;font-family:var(--mono);font-size:11px;color:var(--muted);cursor:pointer;transition:all .15s;margin-left:auto;}
-.refresh-btn:hover{border-color:var(--blue);color:var(--blue);}
+.refresh-btn:hover{border-color:var(--green);color:var(--green);}
 
 /* SCORE HERO */
 .score-hero{text-align:center;padding:28px 0 20px;border-bottom:1px solid var(--border);margin-bottom:24px;}
 .score-who{font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:var(--muted);margin-bottom:8px;}
 .score-num{font-family:var(--head);font-size:clamp(56px,14vw,96px);font-weight:800;line-height:1;letter-spacing:-.04em;}
 .score-max{font-size:12px;color:var(--muted);margin-top:4px;}
-.score-cnt{font-size:11px;color:var(--muted);margin-top:6px;padding:4px 12px;background:var(--s2);border-radius:20px;display:inline-block;}
+.score-cnt{font-size:11px;color:var(--muted);margin-top:6px;padding:4px 12px;background:var(--s2);border-radius:4px;display:inline-block;}
 
 /* FACTOR BARS */
 .block-label{font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:var(--muted);margin-bottom:12px;margin-top:24px;}
@@ -120,11 +166,11 @@ input[type=range]::-webkit-slider-thumb:hover{transform:scale(1.2);}
 .ins{padding:12px 14px 12px 16px;border-radius:8px;font-size:13px;line-height:1.55;border-left:3px solid;}
 .ins.crit{border-color:var(--accent);background:rgba(232,93,58,.07);}
 .ins.warn{border-color:var(--gold);background:rgba(240,180,41,.07);}
-.ins.good{border-color:var(--green);background:rgba(52,214,142,.06);}
+.ins.good{border-color:var(--green);background:rgba(0,230,118,.06);}
 .ins-tag{font-size:10px;letter-spacing:.15em;text-transform:uppercase;font-weight:700;margin-bottom:3px;}
 .ins.crit .ins-tag{color:var(--accent);}
 .ins.warn .ins-tag{color:var(--gold);}
-.ins.good .ins-tag{color:var(--green);}
+.ins.good .ins-tag{color:#00a854;}
 
 /* SPREAD TABLE */
 .stbl-wrap{margin-bottom:24px;overflow-x:auto;}
@@ -185,30 +231,185 @@ input[type=range]::-webkit-slider-thumb:hover{transform:scale(1.2);}
 <body>
 <div class="wrap">
 
-<div class="top-bar">
-  <div class="logo">КОМАНДА<span>.</span>S</div>
-  <div class="formula-pill">
-    <strong>S = [Σ(V×R)] × A × T × C × L × (1−f)</strong>
-    trickymonkey.shop
+<!-- ══ ENTRY ══ -->
+<div class="screen active" id="screen-entry">
+  <div class="entry-wrap">
+    <div class="entry-logo">RENOVATEAM</div>
+
+    <div class="entry-formula-big">
+      S = [Σ(V×R)] × A × T × C × L × (1−f)
+    </div>
+    <div class="entry-formula-sub">Інтегральна формула сили команди</div>
+
+    <!-- METHODOLOGY -->
+    <div class="methodology" style="max-width:520px;margin:0 auto 28px;text-align:left;">
+
+      <div class="meth-title">З чого складається сила команди</div>
+      <p class="meth-intro">Формула S — це не метафора. Це математична модель, де кожен фактор має точний вимір і впливає на результат мультиплікативно: один слабкий множник знижує загальну силу навіть при високих показниках інших.</p>
+
+      <div class="meth-formula-line">S = [ Σ(Vᵢ × Rᵢ) ] × A × T × C × L × (1 − f)</div>
+
+      <div class="meth-factors">
+
+        <div class="meth-factor">
+          <div class="meth-factor-left">
+            <span class="meth-var">V</span>
+            <span class="meth-var-name">Value</span>
+          </div>
+          <div class="meth-factor-right">
+            <strong>Рівень людей</strong>
+            Компетентність, досвід і стабільна продуктивність кожного учасника. Це фундамент — без сильних людей система не працює незалежно від інших факторів.
+          </div>
+        </div>
+
+        <div class="meth-factor">
+          <div class="meth-factor-left">
+            <span class="meth-var">R</span>
+            <span class="meth-var-name">Role fit</span>
+          </div>
+          <div class="meth-factor-right">
+            <strong>Відповідність ролям</strong>
+            Наскільки кожна людина знаходиться саме на тій позиції, де вона найсильніша. Сильна людина на невідповідній ролі — це пряма втрата потенціалу команди.
+          </div>
+        </div>
+
+        <div class="meth-factor">
+          <div class="meth-factor-left">
+            <span class="meth-var">A</span>
+            <span class="meth-var-name">Alignment</span>
+          </div>
+          <div class="meth-factor-right">
+            <strong>Узгодженість цілей</strong>
+            Наскільки всі члени команди рухаються в одному напрямку. Розфокус цілей — один із найпоширеніших прихованих "вбивць" командної ефективності.
+          </div>
+        </div>
+
+        <div class="meth-factor">
+          <div class="meth-factor-left">
+            <span class="meth-var">T</span>
+            <span class="meth-var-name">Trust</span>
+          </div>
+          <div class="meth-factor-right">
+            <strong>Довіра</strong>
+            Готовність діяти без постійного контролю і говорити правду без страху. Низька довіра блокує швидкість рішень і підвищує внутрішні витрати команди.
+          </div>
+        </div>
+
+        <div class="meth-factor">
+          <div class="meth-factor-left">
+            <span class="meth-var">C</span>
+            <span class="meth-var-name">Communication</span>
+          </div>
+          <div class="meth-factor-right">
+            <strong>Комунікація</strong>
+            Швидкість і точність передачі інформації. Якщо потрібне не доходить до потрібних людей вчасно — виникають помилки, затримки і дублювання роботи.
+          </div>
+        </div>
+
+        <div class="meth-factor">
+          <div class="meth-factor-left">
+            <span class="meth-var">L</span>
+            <span class="meth-var-name">Leadership</span>
+          </div>
+          <div class="meth-factor-right">
+            <strong>Лідерство</strong>
+            Чіткість і своєчасність прийняття рішень. Відсутність "центру ваги" веде до зависання рішень, конфліктів пріоритетів і демотивації команди.
+          </div>
+        </div>
+
+        <div class="meth-factor meth-factor-f">
+          <div class="meth-factor-left">
+            <span class="meth-var meth-var-f">f</span>
+            <span class="meth-var-name">Friction</span>
+          </div>
+          <div class="meth-factor-right">
+            <strong>Втрати / Фрікція</strong>
+            Частка ресурсу команди, що йде не у результат: конфлікти, бюрократія, дублювання, хибні пріоритети. У формулі виступає як (1−f) — множник втрат.
+          </div>
+        </div>
+
+      </div>
+
+      <div class="meth-note">
+        <span class="meth-note-mark">!</span>
+        Модель мультиплікативна: навіть один фактор зі значенням 0.3 знижує загальну силу команди в 3+ рази. Саме тому важливо знати не тільки середні оцінки, а й де знаходиться найслабший множник.
+      </div>
+
+    </div>
+
+    <div class="entry-divider" style="max-width:520px;"></div>
+
+    <!-- PROCESS -->
+    <div style="max-width:520px;margin:0 auto 16px;text-align:left;">
+      <div style="font-size:11px;font-weight:700;letter-spacing:0.15em;text-transform:uppercase;color:var(--muted);margin-bottom:4px;">Оцінювання</div>
+      <div style="height:2px;width:40px;background:var(--green);border-radius:2px;"></div>
+    </div>
+
+    <div class="entry-about" style="max-width:520px;">
+      <div class="about-block">
+        <div class="about-num">01</div>
+        <div class="about-text">
+          <strong>Анонімна оцінка</strong>
+          Кожен учасник відповідає на 16 питань самостійно зі свого пристрою. Відповіді не підписані — тільки зведені дані.
+        </div>
+      </div>
+      <div class="about-block">
+        <div class="about-num">02</div>
+        <div class="about-text">
+          <strong>Оцінка керівника</strong>
+          Керівник заповнює окремо — 17 питань з позиції спостерігача. Система порівнює бачення команди і керівника і показує розриви.
+        </div>
+      </div>
+      <div class="about-block">
+        <div class="about-num">03</div>
+        <div class="about-text">
+          <strong>Динаміка до і після</strong>
+          Опитування проводиться двічі. Після заходів розвитку повторюємо — і бачимо реальний прогрес у цифрах по кожному фактору.
+        </div>
+      </div>
+    </div>
+
+    <div class="entry-divider"></div>
+    <div class="entry-pwd-label">Код доступу команди</div>
+    <input type="password" id="entry-input" placeholder="••••••••" class="entry-input" onkeydown="if(event.key==='Enter') checkEntry()">
+    <div id="entry-error" class="entry-error"></div>
+    <div class="human-check">
+      <label class="human-label">
+        <input type="checkbox" id="human-cb" onchange="updateEntryBtn()">
+        <span class="human-box"></span>
+        <span class="human-text">Я людина</span>
+      </label>
+    </div>
+    <button class="entry-btn" id="entry-submit-btn" onclick="checkEntry()" disabled style="opacity:.5;cursor:not-allowed;">Увійти →</button>
   </div>
 </div>
 
 <!-- ══ LANDING ══ -->
-<div class="screen active" id="screen-landing">
-  <div class="landing-title">Діагностика<br><span>сили</span> команди</div>
-  <p class="landing-sub">Анонімне опитування для оцінки ефективності команди. Кожен заповнює зі свого пристрою — результати збираються автоматично.</p>
-  <div class="big-btns">
-    <button class="big-btn" onclick="goTo('screen-period')">
-      <div class="icon">👥</div>
-      <div class="btn-title">Я — учасник команди</div>
-      <div class="btn-desc">Анонімна оцінка зсередини. 16 питань, ~8 хвилин</div>
+<div class="screen" id="screen-landing">
+  <div class="landing-topbar">
+    <div class="landing-formula">S = [Σ(V×R)] × A × T × C × L × (1−f)</div>
+  </div>
+  <div class="landing-hero">
+    <div class="landing-title">Обери роль</div>
+    <p class="landing-sub">Кожен учасник заповнює анонімно зі свого пристрою. Керівник заповнює окремо і бачить повний дашборд результатів.</p>
+  </div>
+  <div class="role-cards">
+    <button class="role-card team-card" onclick="goTo('screen-period')">
+      <div class="role-card-num">01</div>
+      <div class="role-card-title">Учасник команди</div>
+      <div class="role-card-sub">Анонімна оцінка зсередини. Твої відповіді не підписані.</div>
+      <div class="role-card-meta">16 питань · ~8 хвилин</div>
+      <div class="role-card-arrow">→</div>
     </button>
-    <button class="big-btn" onclick="askPassword()">
-      <div class="icon">🎯</div>
-      <div class="btn-title">Я — керівник</div>
-      <div class="btn-desc">17 питань + дашборд результатів команди</div>
+    <button class="role-card leader-card" onclick="askLeaderPassword()">
+      <div class="role-card-num">02</div>
+      <div class="role-card-title">Керівник</div>
+      <div class="role-card-sub">Оцінка команди + живий дашборд результатів.</div>
+      <div class="role-card-meta">17 питань · дашборд</div>
+      <div class="role-card-arrow">→</div>
     </button>
   </div>
+  <div style="text-align:center;padding:12px 0;font-size:10px;color:var(--muted2);letter-spacing:0.1em;text-transform:uppercase;">RENOVATEAM · trickymonkey.shop</div>
 </div>
 
 <!-- ══ TEAM: PERIOD SELECT ══ -->
@@ -217,8 +418,8 @@ input[type=range]::-webkit-slider-thumb:hover{transform:scale(1.2);}
   <div class="screen-title">Який вимір?</div>
   <p class="screen-sub">Ми вимірюємо команду двічі — до і після заходів розвитку. Обери потрібний.</p>
   <div class="period-tabs">
-    <button class="ptab active" id="pt-before" onclick="selectPeriod('before')">📍 До заходів</button>
-    <button class="ptab" id="pt-after" onclick="selectPeriod('after')">🚀 Після заходів</button>
+    <button class="ptab active" id="pt-before" onclick="selectPeriod('before')">До заходів</button>
+    <button class="ptab" id="pt-after" onclick="selectPeriod('after')">Після заходів</button>
   </div>
   <button class="submit-btn" onclick="startTeamForm()">Почати опитування →</button>
 </div>
@@ -233,7 +434,7 @@ input[type=range]::-webkit-slider-thumb:hover{transform:scale(1.2);}
 <!-- ══ SUCCESS ══ -->
 <div class="screen" id="screen-success">
   <div class="success-block">
-    <div class="success-icon">✅</div>
+    <div style="font-size:48px;font-weight:800;color:var(--green);margin-bottom:16px;">✓</div>
     <div class="success-title">Дякуємо!</div>
     <p class="success-sub">Твої відповіді збережено анонімно.<br><br>Керівник побачить зведені результати після того, як всі учасники заповнять опитування.</p>
   </div>
@@ -245,8 +446,8 @@ input[type=range]::-webkit-slider-thumb:hover{transform:scale(1.2);}
   <div class="screen-title">🎯 Оцінка керівника</div>
   <p class="screen-sub">Спочатку обери вимір, потім заповни свою оцінку і одразу побачиш дашборд.</p>
   <div class="period-tabs">
-    <button class="ptab active" id="lpt-before" onclick="selectLeaderPeriod('before')">📍 До заходів</button>
-    <button class="ptab" id="lpt-after" onclick="selectLeaderPeriod('after')">🚀 Після заходів</button>
+    <button class="ptab active" id="lpt-before" onclick="selectLeaderPeriod('before')">До заходів</button>
+    <button class="ptab" id="lpt-after" onclick="selectLeaderPeriod('after')">Після заходів</button>
   </div>
   <button class="submit-btn" onclick="startLeaderForm()">Заповнити оцінку →</button>
   <div style="margin-top:12px;">
@@ -267,8 +468,8 @@ input[type=range]::-webkit-slider-thumb:hover{transform:scale(1.2);}
   <div class="dash-sub">Зведені результати команди в реальному часі</div>
   <div class="dash-top">
     <div class="period-tabs" style="margin:0;flex:1;min-width:200px;">
-      <button class="ptab active" id="dpt-before" onclick="switchDashPeriod('before')">📍 До заходів</button>
-      <button class="ptab" id="dpt-after" onclick="switchDashPeriod('after')">🚀 Після заходів</button>
+      <button class="ptab active" id="dpt-before" onclick="switchDashPeriod('before')">До заходів</button>
+      <button class="ptab" id="dpt-after" onclick="switchDashPeriod('after')">Після заходів</button>
     </div>
     <button class="refresh-btn" onclick="loadDashboard()">↻ Оновити</button>
     <button class="back-btn" style="margin:0;" onclick="goTo('screen-landing')">← Головна</button>
@@ -566,7 +767,7 @@ async function loadDashboard() {
 
   if (error) {
     document.getElementById('dashboard-content').innerHTML =
-      `<div class="waiting-block"><div class="waiting-icon">⚠️</div><div class="waiting-text">Помилка: ${error.message}</div></div>`;
+      `<div class="waiting-block"><div style="font-size:32px;color:#ff4444;margin-bottom:12px;">!</div><div class="waiting-text">Помилка: ${error.message}</div></div>`;
     return;
   }
 
@@ -575,7 +776,7 @@ async function loadDashboard() {
 
   if (teamRows.length === 0 && !leaderRow) {
     document.getElementById('dashboard-content').innerHTML =
-      `<div class="waiting-block"><div class="waiting-icon">⏳</div>
+      `<div class="waiting-block"><div style="font-size:32px;font-weight:800;color:var(--muted);margin-bottom:12px;">···</div>
       <div class="waiting-text">Поки що немає відповідей для цього виміру.<br><br>Надішліть посилання учасникам — як тільки заповнять, дані з'являться тут.</div></div>`;
     return;
   }
@@ -817,19 +1018,48 @@ function deltaHtml(calcNow, calcOther, fNow, fOther) {
 }
 
 // PASSWORD
-const LEADER_PASSWORD = "trickymonkey2025";
-function askPassword() {
+const ENTRY_PASSWORD = "1234";
+const LEADER_PASSWORD = "1234";
+
+function updateEntryBtn() {
+  const cb = document.getElementById("human-cb");
+  const btn = document.getElementById("entry-submit-btn");
+  if (cb && btn) {
+    btn.disabled = !cb.checked;
+    btn.style.opacity = cb.checked ? "1" : "0.5";
+    btn.style.cursor = cb.checked ? "pointer" : "not-allowed";
+  }
+}
+
+function checkEntry() {
+  const val = document.getElementById("entry-input").value;
+  if (val === ENTRY_PASSWORD) {
+    goTo("screen-landing");
+  } else {
+    document.getElementById("entry-error").textContent = "❌ Невірний код доступу";
+    document.getElementById("entry-input").value = "";
+    document.getElementById("entry-input").focus();
+  }
+}
+
+function askLeaderPassword() {
   const m = document.getElementById("pwd-modal");
   m.style.display = "flex";
   document.getElementById("pwd-input").value = "";
   document.getElementById("pwd-error").textContent = "";
   setTimeout(() => document.getElementById("pwd-input").focus(), 100);
 }
+function askPassword() { askLeaderPassword(); }
 function closePwdModal() {
   document.getElementById("pwd-modal").style.display = "none";
 }
 function checkPassword() {
   const val = document.getElementById("pwd-input").value;
+  const humanCb = document.getElementById("leader-human-cb");
+  if (humanCb && !humanCb.checked) {
+    document.getElementById("pwd-error").textContent = "☑ Постав позначку «Я людина»";
+    return;
+  }
   if (val === LEADER_PASSWORD) {
     closePwdModal();
     goTo("screen-leader-period");
@@ -843,13 +1073,17 @@ function checkPassword() {
 <!-- PASSWORD MODAL -->
 <div id="pwd-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:999;align-items:center;justify-content:center;padding:20px;">
   <div style="background:#ffffff;border:1px solid #dde2f0;border-radius:16px;padding:32px;max-width:360px;width:100%;text-align:center;">
-    <div style="font-size:36px;margin-bottom:16px;">🔐</div>
+    <div style="font-size:28px;font-weight:800;color:var(--green);margin-bottom:12px;">🔐</div>
     <div style="font-family:Syne,sans-serif;font-size:18px;font-weight:800;color:#1a1d2e;margin-bottom:8px;">Доступ керівника</div>
     <div style="font-size:12px;color:#6b6b8e;margin-bottom:24px;line-height:1.6;">Цей розділ доступний тільки керівнику</div>
     <input type="password" id="pwd-input" placeholder="Введи пароль"
       style="width:100%;padding:12px 16px;background:#f4f6fb;border:1px solid #dde2f0;border-radius:8px;color:#1a1d2e;font-family:JetBrains Mono,monospace;font-size:14px;margin-bottom:8px;outline:none;box-sizing:border-box;"
       onkeydown="if(event.key==='Enter') checkPassword()">
-    <div id="pwd-error" style="font-size:11px;color:#e85d3a;margin-bottom:12px;min-height:16px;"></div>
+    <div id="pwd-error" style="font-size:11px;color:#e85d3a;margin-bottom:8px;min-height:16px;"></div>
+    <label style="display:flex;align-items:center;gap:8px;justify-content:center;cursor:pointer;margin-bottom:14px;font-size:13px;font-family:Syne,sans-serif;font-weight:600;color:#1a1d2e;">
+      <input type="checkbox" id="leader-human-cb" style="width:16px;height:16px;cursor:pointer;accent-color:#4a7cf7;">
+      Я людина
+    </label>
     <div style="display:flex;gap:8px;">
       <button onclick="closePwdModal()" style="flex:1;padding:12px;background:transparent;border:1px solid #dde2f0;border-radius:8px;font-family:JetBrains Mono,monospace;font-size:12px;color:#6b7280;cursor:pointer;">Скасувати</button>
       <button onclick="checkPassword()" style="flex:1;padding:12px;background:linear-gradient(135deg,#4a7cf7,#9b6dff);border:none;border-radius:8px;font-family:Syne,sans-serif;font-size:13px;font-weight:700;color:#fff;cursor:pointer;">Увійти →</button>
