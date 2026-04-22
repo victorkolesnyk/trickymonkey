@@ -42,6 +42,52 @@ body::after{content:'';position:fixed;inset:0;
 .meth-note{display:flex;gap:10px;align-items:flex-start;background:rgba(0,230,118,.06);border:1px solid rgba(0,230,118,.2);border-radius:8px;padding:12px 14px;font-size:12px;color:var(--muted);line-height:1.6;}
 .meth-note-mark{font-size:16px;font-weight:800;color:var(--green);flex-shrink:0;line-height:1.4;}
 
+
+/* WHITEPAPER */
+.wp-header{padding:32px 0 28px;border-bottom:2px solid var(--ink);margin-bottom:32px;}
+.wp-label{font-size:10px;font-weight:700;letter-spacing:0.2em;text-transform:uppercase;color:var(--green);margin-bottom:12px;}
+.wp-title{font-size:clamp(28px,7vw,48px);font-weight:800;line-height:1.05;letter-spacing:-0.02em;margin-bottom:12px;}
+.wp-subtitle{font-size:13px;color:var(--muted);line-height:1.6;}
+.wp-formula-block{background:#0a0a0a;border-radius:10px;padding:24px;margin:0 0 32px;text-align:center;}
+.wp-formula-label{font-size:10px;letter-spacing:0.15em;text-transform:uppercase;color:#666;margin-bottom:12px;}
+.wp-formula{font-size:clamp(13px,3vw,18px);font-weight:700;color:var(--green);letter-spacing:0.03em;margin-bottom:8px;}
+.wp-formula-note{font-size:11px;color:#555;}
+.wp-section{display:grid;grid-template-columns:52px 1fr;gap:20px;margin-bottom:36px;padding-bottom:36px;border-bottom:1px solid var(--border);}
+.wp-section-num{font-size:36px;font-weight:800;color:var(--green);line-height:1;padding-top:4px;letter-spacing:-0.02em;}
+.wp-section-body h2.wp-h2{font-size:18px;font-weight:800;margin-bottom:14px;line-height:1.2;}
+.wp-section-body p{font-size:13px;color:var(--muted);line-height:1.75;margin-bottom:12px;}
+.wp-example{background:var(--s2);border-left:3px solid var(--green);border-radius:0 8px 8px 0;padding:12px 16px;margin:12px 0;font-size:12px;color:var(--ink);line-height:1.6;}
+.wp-example-label{font-size:10px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:var(--green);margin-bottom:4px;}
+.wp-factor{background:var(--s1);border:1px solid var(--border);border-radius:8px;padding:16px;margin-bottom:10px;}
+.wp-factor-f{border-left:3px solid #aaa;}
+.wp-factor-head{display:flex;align-items:center;gap:10px;margin-bottom:10px;}
+.wp-var{font-size:24px;font-weight:800;color:var(--green);line-height:1;min-width:28px;}
+.wp-var-f{color:#888;}
+.wp-var-title{font-size:14px;font-weight:700;color:var(--ink);}
+.wp-factor p{font-size:12px;color:var(--muted);line-height:1.65;margin-bottom:8px;}
+.wp-factor-note{font-size:11px;color:var(--muted2);font-style:italic;background:var(--bg);border-radius:6px;padding:8px 10px;margin-top:4px !important;}
+.wp-table{margin:16px 0;display:flex;flex-direction:column;gap:6px;}
+.wp-table-row{display:flex;gap:12px;align-items:flex-start;background:var(--s1);border:1px solid var(--border);border-radius:6px;padding:10px 12px;}
+.wp-table-val{font-size:13px;font-weight:800;min-width:50px;flex-shrink:0;padding-top:1px;}
+.wp-val-low{color:#e85d3a;}
+.wp-val-mid{color:#d97706;}
+.wp-val-high{color:#059669;}
+.wp-val-top{color:var(--green);}
+.wp-table-desc{font-size:12px;color:var(--muted);line-height:1.5;}
+.wp-cycle{display:flex;align-items:flex-start;gap:8px;margin:16px 0;flex-wrap:wrap;}
+.wp-cycle-step{flex:1;min-width:120px;background:var(--s1);border:1px solid var(--border);border-radius:8px;padding:14px 12px;}
+.wp-cycle-num{font-size:22px;font-weight:800;color:var(--green);margin-bottom:6px;}
+.wp-cycle-text{font-size:11px;color:var(--muted);line-height:1.5;}
+.wp-cycle-text strong{color:var(--ink);display:block;margin-bottom:4px;font-size:12px;}
+.wp-cycle-arrow{font-size:20px;color:var(--muted2);padding-top:20px;flex-shrink:0;}
+.wp-cta{padding:32px 0 0;text-align:center;}
+@media(max-width:520px){
+  .wp-section{grid-template-columns:36px 1fr;gap:12px;}
+  .wp-section-num{font-size:26px;}
+  .wp-cycle-arrow{display:none;}
+  .wp-cycle{flex-direction:column;}
+}
+
 /* ENTRY SCREEN */
 .entry-wrap{min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px 20px;text-align:center;}
 .entry-logo{font-size:clamp(22px,5vw,32px);font-weight:800;letter-spacing:0.08em;text-transform:uppercase;margin-bottom:24px;color:var(--ink);}
@@ -73,10 +119,11 @@ body::after{content:'';position:fixed;inset:0;
 .landing-formula{font-size:13px;font-weight:700;color:var(--green);background:#0a0a0a;border-radius:8px;padding:10px 20px;display:inline-block;letter-spacing:0.04em;}
 .landing-hero{margin-bottom:24px;}
 .role-cards-three{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:24px;align-items:stretch;}
+.role-cards-four{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:10px;margin-bottom:24px;align-items:stretch;}
 .role-card{padding:20px 16px 48px;border-radius:10px;border:1.5px solid var(--border);background:var(--s1);cursor:pointer;transition:all .2s;text-align:left;position:relative;overflow:hidden;width:100%;min-height:180px;display:flex;flex-direction:column;}
 .role-card:hover{transform:translateY(-3px);box-shadow:0 8px 20px rgba(0,0,0,.1);border-color:var(--green);}
 .results-card:hover{border-color:#00b8d4;}
-.role-card-num{font-size:28px;font-weight:800;color:var(--green);margin-bottom:12px;display:block;line-height:1;}
+.role-card-num{font-size:44px;font-weight:800;color:var(--green);margin-bottom:10px;display:block;line-height:1;letter-spacing:-0.03em;}
 .role-card-title{font-size:15px;font-weight:800;color:var(--ink);margin-bottom:6px;line-height:1.2;}
 .role-card-sub{font-size:12px;color:var(--muted);margin-bottom:12px;line-height:1.5;}
 .role-card-meta{font-size:11px;color:var(--muted2);padding:3px 8px;background:var(--bg);border-radius:4px;display:inline-block;}
@@ -396,7 +443,14 @@ input[type=range]::-webkit-slider-thumb:hover{transform:scale(1.2);}
     <div class="landing-title">Обери роль</div>
     <p class="landing-sub">Кожен учасник заповнює анонімно зі свого пристрою. Керівник заповнює окремо і бачить повний дашборд результатів.</p>
   </div>
-  <div class="role-cards-three">
+  <div class="role-cards-four">
+    <button class="role-card meth-card" onclick="goTo('screen-methodology')">
+      <div class="role-card-num">00</div>
+      <div class="role-card-title">Методологія</div>
+      <div class="role-card-sub">Наукова основа. Як працює формула і чому команда — це система.</div>
+      <div class="role-card-meta">Whitepaper</div>
+      <div class="role-card-arrow">→</div>
+    </button>
     <button class="role-card team-card" onclick="goTo('screen-period')">
       <div class="role-card-num">01</div>
       <div class="role-card-title">Учасник команди</div>
@@ -419,7 +473,8 @@ input[type=range]::-webkit-slider-thumb:hover{transform:scale(1.2);}
       <div class="role-card-arrow">→</div>
     </button>
   </div>
-  <div style="text-align:center;padding:12px 0;font-size:10px;color:var(--muted2);letter-spacing:0.1em;text-transform:uppercase;">RENOVATEAM · trickymonkey.shop</div>
+
+  <div style="text-align:center;padding:8px 0;font-size:10px;color:var(--muted2);letter-spacing:0.1em;text-transform:uppercase;">RENOVATEAM · trickymonkey.shop</div>
 </div>
 
 <!-- ══ TEAM: PERIOD SELECT ══ -->
@@ -453,20 +508,18 @@ input[type=range]::-webkit-slider-thumb:hover{transform:scale(1.2);}
 <!-- ══ LEADER: PERIOD SELECT ══ -->
 <div class="screen" id="screen-leader-period">
   <button class="back-btn" onclick="goTo('screen-landing')">← Назад</button>
-  <div class="screen-title">🎯 Оцінка керівника</div>
+  <div class="screen-title">Оцінка керівника</div>
   <p class="screen-sub">Спочатку обери вимір, потім заповни свою оцінку і одразу побачиш дашборд.</p>
   <div class="period-tabs">
     <button class="ptab active" id="lpt-before" onclick="selectLeaderPeriod('before')">До заходів</button>
     <button class="ptab" id="lpt-after" onclick="selectLeaderPeriod('after')">Після заходів</button>
   </div>
   <button class="submit-btn" onclick="startLeaderForm()">Заповнити оцінку →</button>
-  <div style="margin-top:12px;">
-    <button class="submit-btn" style="background:var(--s2);box-shadow:none;border:1px solid var(--border);" onclick="goToDashboard()">Переглянути дашборд →</button>
-  </div>
 </div>
 
 <!-- ══ LEADER: FORM ══ -->
 <div class="screen" id="screen-leader-form">
+  <button class="back-btn" onclick="goTo('screen-leader-period')">← Назад</button>
   <div class="progress-bar-wrap"><div class="progress-bar-fill" id="leader-prog" style="width:6%"></div></div>
   <div id="leader-q-container"></div>
   <button class="submit-btn" id="leader-sub-btn" onclick="submitLeader()">Зберегти та переглянути дашборд →</button>
@@ -1061,6 +1114,13 @@ function askLeaderPassword() {
   setTimeout(() => document.getElementById("pwd-input").focus(), 100);
 }
 function askPassword() { askLeaderPassword(); }
+function askResultsPassword() {
+  const m = document.getElementById("pwd-modal");
+  m.style.display = "flex";
+  document.getElementById("pwd-input").value = "";
+  document.getElementById("pwd-error").textContent = "";
+  setTimeout(() => document.getElementById("pwd-input").focus(), 100);
+}
 function closePwdModal() {
   document.getElementById("pwd-modal").style.display = "none";
 }
@@ -1141,5 +1201,174 @@ function copyResults() {
     </div>
   </div>
 </div>
+
+<!-- ══ METHODOLOGY ══ -->
+<div class="screen" id="screen-methodology">
+  <button class="back-btn" onclick="goTo('screen-landing')">← Назад</button>
+
+  <div class="wp-header">
+    <div class="wp-label">Whitepaper</div>
+    <h1 class="wp-title">Методологія<br>RENOVATEAM</h1>
+    <p class="wp-subtitle">Наукова основа діагностики командної ефективності</p>
+  </div>
+
+  <div class="wp-section">
+    <div class="wp-section-num">01</div>
+    <div class="wp-section-body">
+      <h2 class="wp-h2">Чому команда — це система</h2>
+      <p>Більшість підходів до оцінки команди зводяться до оцінки окремих людей. Це хибна логіка. Команда — не сума індивідів, а система взаємодії. Два однаково сильних фахівці можуть або подвоїти результат, або взаємно гальмувати одне одного — залежно від якості системи навколо них.</p>
+      <p>Саме тому ми вимірюємо не людей окремо, а команду як цілісний організм. Наша модель описує силу команди як функцію від семи взаємопов'язаних факторів.</p>
+    </div>
+  </div>
+
+  <div class="wp-formula-block">
+    <div class="wp-formula-label">Інтегральна формула сили команди</div>
+    <div class="wp-formula">S = [ Σ(Vᵢ × Rᵢ) ] × A × T × C × L × (1 − f)</div>
+    <div class="wp-formula-note">де S — інтегральна сила команди, значення від 0 до 100</div>
+  </div>
+
+  <div class="wp-section">
+    <div class="wp-section-num">02</div>
+    <div class="wp-section-body">
+      <h2 class="wp-h2">Чому формула мультиплікативна</h2>
+      <p>Ключова властивість моделі — множення, а не додавання. Це не випадково. В адитивній моделі висока оцінка одного фактора компенсує низьку іншого. Але в реальності це не так.</p>
+      <p>Якщо команда складається з сильних людей (V=9), але довіра між ними низька (T=0.3) — ефективність системи падає в рази. Люди дублюють роботу, приховують інформацію, витрачають енергію на внутрішні конфлікти замість результату.</p>
+      <div class="wp-example">
+        <div class="wp-example-label">Приклад</div>
+        Команда з оцінками V=8, R=8, A=8, C=8, L=8 але T=3 (низька довіра) отримає S ≈ 12. Та сама команда з T=8 отримає S ≈ 32 — у 2.6 рази більше. Один фактор. Вся різниця.
+      </div>
+      <p>Це означає: шукати де найнижчий множник — важливіше, ніж покращувати те, що вже сильне.</p>
+    </div>
+  </div>
+
+  <div class="wp-section">
+    <div class="wp-section-num">03</div>
+    <div class="wp-section-body">
+      <h2 class="wp-h2">Сім факторів сили</h2>
+
+      <div class="wp-factor">
+        <div class="wp-factor-head">
+          <span class="wp-var">V</span>
+          <span class="wp-var-title">Value — Рівень людей</span>
+        </div>
+        <p>Компетентність, досвід і стабільна продуктивність кожного учасника. Це єдиний фактор де підвищення йде через навчання, наймання або звільнення. Всі інші фактори можна змінити без зміни складу команди.</p>
+        <p class="wp-factor-note">Важливо: V вимірює не потенціал людини, а її реальну продуктивність на поточній позиції.</p>
+      </div>
+
+      <div class="wp-factor">
+        <div class="wp-factor-head">
+          <span class="wp-var">R</span>
+          <span class="wp-var-title">Role fit — Відповідність ролям</span>
+        </div>
+        <p>Наскільки кожна людина займається тим, що відповідає її сильним сторонам. R і V — окремі виміри навмисно. Сильна людина на невідповідній ролі втрачає до 60-70% своєї потенційної ефективності.</p>
+        <p class="wp-factor-note">Часто простіше перерозподілити ролі всередині команди, ніж шукати нових людей — і це дає кратний приріст S.</p>
+      </div>
+
+      <div class="wp-factor">
+        <div class="wp-factor-head">
+          <span class="wp-var">A</span>
+          <span class="wp-var-title">Alignment — Узгодженість цілей</span>
+        </div>
+        <p>Наскільки всі члени команди розуміють і поділяють спільну ціль, і наскільки щоденні дії підпорядковані цій цілі. Низький A — це коли кожен "старається", але всі у різних напрямках.</p>
+        <p class="wp-factor-note">Розфокус цілей — один із найпоширеніших прихованих вбивць командної ефективності. Він часто невидимий зовні, бо люди виглядають зайнятими.</p>
+      </div>
+
+      <div class="wp-factor">
+        <div class="wp-factor-head">
+          <span class="wp-var">T</span>
+          <span class="wp-var-title">Trust — Довіра</span>
+        </div>
+        <p>Готовність діяти без постійного контролю, делегувати без тривоги, і говорити правду навіть коли це незручно. Довіра — це швидкість команди. Там де її немає, кожне рішення проходить додаткові перевірки, кожна помилка приховується.</p>
+        <p class="wp-factor-note">Довіра будується повільно і руйнується швидко. Але це найбільш керований фактор через конкретні практики взаємодії.</p>
+      </div>
+
+      <div class="wp-factor">
+        <div class="wp-factor-head">
+          <span class="wp-var">C</span>
+          <span class="wp-var-title">Communication — Комунікація</span>
+        </div>
+        <p>Швидкість і точність передачі інформації всередині команди. Якщо потрібне не доходить до потрібних людей вчасно — виникають помилки через неповну картину, затримки через очікування, і дублювання через відсутність синхронізації.</p>
+        <p class="wp-factor-note">C і T сильно корелюють: низька довіра породжує формальну комунікацію яка повільна і втрачає сенс. Тому підйом T часто автоматично покращує C.</p>
+      </div>
+
+      <div class="wp-factor">
+        <div class="wp-factor-head">
+          <span class="wp-var">L</span>
+          <span class="wp-var-title">Leadership — Лідерство і рішення</span>
+        </div>
+        <p>Чіткість і своєчасність прийняття рішень. L вимірює не особистість лідера, а якість процесу: чи є в команді зрозумілий "центр ваги", чи рішення приймаються швидко, чи ескалації не зависають.</p>
+        <p class="wp-factor-note">Низький L часто виявляється в тому, що команда чекає замість того щоб діяти. Навіть "неправильне" рішення прийняте вчасно часто краще за "правильне" але запізніле.</p>
+      </div>
+
+      <div class="wp-factor wp-factor-f">
+        <div class="wp-factor-head">
+          <span class="wp-var wp-var-f">f</span>
+          <span class="wp-var-title">Friction — Втрати</span>
+        </div>
+        <p>Частка ресурсу команди яка йде не у результат: конфлікти, зайва бюрократія, дублювання роботи, неправильні пріоритети, очікування. У формулі представлений як (1−f) — тобто чим менше втрат, тим вищий множник.</p>
+        <p class="wp-factor-note">Команди зазвичай думають як "додати" щоб покращити результат. Але усунення втрат дає швидший і дешевший приріст ніж додавання нових ресурсів.</p>
+      </div>
+
+    </div>
+  </div>
+
+  <div class="wp-section">
+    <div class="wp-section-num">04</div>
+    <div class="wp-section-body">
+      <h2 class="wp-h2">Як читати результати</h2>
+      <p>Інтегральна оцінка S від 0 до 100 — це не рейтинг і не вирок. Це відправна точка. Більшість команд отримують S в діапазоні 10-40 при першому вимірі. Це нормально — модель навмисно строга через мультиплікативність.</p>
+      <div class="wp-table">
+        <div class="wp-table-row">
+          <span class="wp-table-val wp-val-low">0–20</span>
+          <span class="wp-table-desc">Є критичні вузькі місця. Один або кілька факторів гальмують всю систему.</span>
+        </div>
+        <div class="wp-table-row">
+          <span class="wp-table-val wp-val-mid">20–45</span>
+          <span class="wp-table-desc">Команда функціонує але є значний потенціал росту. Типовий стан для більшості команд.</span>
+        </div>
+        <div class="wp-table-row">
+          <span class="wp-table-val wp-val-high">45–70</span>
+          <span class="wp-table-desc">Сильна команда. Є точки для подальшого росту але система працює добре.</span>
+        </div>
+        <div class="wp-table-row">
+          <span class="wp-table-val wp-val-top">70+</span>
+          <span class="wp-table-desc">Виняткова ефективність. Зустрічається рідко і зазвичай є результатом тривалої роботи над системою.</span>
+        </div>
+      </div>
+      <p>Важливіше абсолютного значення S — динаміка між вимірами і профіль факторів. Де найнижчий множник? Де найбільший розрив між баченням команди і керівника? Ці питання ведуть до конкретних дій.</p>
+    </div>
+  </div>
+
+  <div class="wp-section">
+    <div class="wp-section-num">05</div>
+    <div class="wp-section-body">
+      <h2 class="wp-h2">Цикл розвитку</h2>
+      <p>Діагностика — не подія, а цикл. RENOVATEAM побудований на двох вимірах: до і після заходів розвитку.</p>
+      <div class="wp-cycle">
+        <div class="wp-cycle-step">
+          <div class="wp-cycle-num">1</div>
+          <div class="wp-cycle-text"><strong>Вимір до</strong><br>Анонімне опитування. Отримуємо профіль команди і розуміємо де найбільша зона росту.</div>
+        </div>
+        <div class="wp-cycle-arrow">→</div>
+        <div class="wp-cycle-step">
+          <div class="wp-cycle-num">2</div>
+          <div class="wp-cycle-text"><strong>Заходи розвитку</strong><br>Конкретні дії під найслабший фактор: воркшопи, зміна процесів, ретроспективи, коучинг.</div>
+        </div>
+        <div class="wp-cycle-arrow">→</div>
+        <div class="wp-cycle-step">
+          <div class="wp-cycle-num">3</div>
+          <div class="wp-cycle-text"><strong>Вимір після</strong><br>Повторне опитування. Бачимо реальний прогрес у цифрах по кожному фактору.</div>
+        </div>
+      </div>
+      <p>Порівняння двох вимірів показує не тільки що змінилось, а й наскільки обрані заходи були ефективними. Це перетворює розвиток команди з мистецтва в керований процес.</p>
+    </div>
+  </div>
+
+  <div class="wp-cta">
+    <button class="submit-btn" style="max-width:300px;margin:0 auto;display:block;" onclick="goTo('screen-landing')">Почати діагностику →</button>
+  </div>
+
+</div>
+
 </body>
 </html>
