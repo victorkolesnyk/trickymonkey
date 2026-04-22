@@ -88,6 +88,12 @@ body::after{content:'';position:fixed;inset:0;
   .wp-cycle{flex-direction:column;}
 }
 
+
+/* HONESTY BLOCK */
+.honesty-block{background:var(--s1);border:1.5px solid var(--green);border-radius:10px;padding:20px;margin-bottom:24px;}
+.honesty-title{font-size:13px;font-weight:800;color:var(--ink);margin-bottom:10px;letter-spacing:0.02em;}
+.honesty-text{font-size:12px;color:var(--muted);line-height:1.65;margin-bottom:8px;}
+
 /* ENTRY SCREEN */
 .entry-wrap{min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px 20px;text-align:center;}
 .entry-logo{font-size:clamp(22px,5vw,32px);font-weight:800;letter-spacing:0.08em;text-transform:uppercase;margin-bottom:24px;color:var(--ink);}
@@ -177,8 +183,8 @@ input[type=range]::-webkit-slider-thumb:hover{transform:scale(1.2);}
 .submit-btn{width:100%;padding:16px;background:var(--green);border:none;border-radius:8px;font-size:14px;font-weight:700;letter-spacing:.06em;color:#0a0a0a;cursor:pointer;transition:all .2s;margin-top:24px;}
 .submit-btn:hover{transform:translateY(-2px);box-shadow:0 6px 20px rgba(0,230,118,.3);}
 .submit-btn:disabled{opacity:.5;cursor:not-allowed;transform:none;}
-.back-btn{background:transparent;border:1px solid var(--border);border-radius:8px;padding:9px 16px;font-family:var(--mono);font-size:12px;color:var(--muted);cursor:pointer;transition:all .15s;margin-bottom:20px;display:inline-block;}
-.back-btn:hover{border-color:var(--green);color:var(--ink);}
+.back-btn{background:transparent;border:1.5px solid var(--border);border-radius:8px;padding:10px 18px;font-size:12px;font-weight:600;color:var(--muted);cursor:pointer;transition:all .2s;margin-bottom:20px;display:inline-block;letter-spacing:0.02em;}
+.back-btn:hover{border-color:var(--green);color:var(--green);background:rgba(0,230,118,.04);}
 
 /* SUCCESS */
 .success-block{text-align:center;padding:56px 20px;}
@@ -190,7 +196,7 @@ input[type=range]::-webkit-slider-thumb:hover{transform:scale(1.2);}
 .dash-title{font-family:var(--head);font-size:22px;font-weight:800;margin-bottom:4px;}
 .dash-sub{font-size:12px;color:var(--muted);margin-bottom:20px;}
 .dash-top{display:flex;align-items:center;gap:8px;margin-bottom:20px;flex-wrap:wrap;}
-.refresh-btn{padding:8px 14px;background:transparent;border:1px solid var(--border);border-radius:8px;font-size:11px;color:var(--muted);cursor:pointer;transition:all .15s;}
+.refresh-btn{padding:10px 18px;background:transparent;border:1.5px solid var(--border);border-radius:8px;font-size:12px;font-weight:600;color:var(--muted);cursor:pointer;transition:all .2s;letter-spacing:0.02em;}
 .refresh-btn:hover{border-color:var(--green);color:var(--green);}
 .copy-btn{padding:8px 16px;background:var(--green);border:none;border-radius:8px;font-size:11px;font-weight:700;color:#0a0a0a;cursor:pointer;transition:all .15s;margin-left:auto;}
 .copy-btn:hover{box-shadow:0 4px 12px rgba(0,230,118,.3);transform:translateY(-1px);}
@@ -493,7 +499,7 @@ input[type=range]::-webkit-slider-thumb:hover{transform:scale(1.2);}
 <div class="screen" id="screen-team-form">
   <div class="progress-bar-wrap"><div class="progress-bar-fill" id="team-prog" style="width:6%"></div></div>
   <div id="team-q-container"></div>
-  <button class="submit-btn" id="team-sub-btn" onclick="submitTeam()">Надіслати відповіді →</button>
+  <button class="submit-btn" id="team-sub-btn" onclick="submitTeam()" disabled style="opacity:.5;">Надіслати відповіді →</button>
 </div>
 
 <!-- ══ SUCCESS ══ -->
@@ -522,7 +528,7 @@ input[type=range]::-webkit-slider-thumb:hover{transform:scale(1.2);}
   <button class="back-btn" onclick="goTo('screen-leader-period')">← Назад</button>
   <div class="progress-bar-wrap"><div class="progress-bar-fill" id="leader-prog" style="width:6%"></div></div>
   <div id="leader-q-container"></div>
-  <button class="submit-btn" id="leader-sub-btn" onclick="submitLeader()">Зберегти та переглянути дашборд →</button>
+  <button class="submit-btn" id="leader-sub-btn" onclick="submitLeader()" disabled style="opacity:.5;">Зберегти оцінку →</button>
 </div>
 
 <!-- ══ DASHBOARD ══ -->
@@ -703,7 +709,18 @@ function switchDashPeriod(p) {
 // RENDER QUESTIONS
 // ════════════════════════════════════════════════
 function renderQuestions(qs, containerId, progId, valsObj) {
-  let html = '';
+  // Honesty notice + human checkbox at top
+  let html = `<div class="honesty-block">
+    <div class="honesty-title">Перед тим як почати</div>
+    <p class="honesty-text">Це опитування працює тільки якщо ти чесний.</p>
+    <p class="honesty-text">Як з лікарем — якщо приховуєш симптоми, діагноз буде неправильним і лікування не допоможе. Тут так само: занижена проблема залишається проблемою, просто невидимою. Ніхто не побачить твої відповіді окремо — тільки загальна картина по команді.</p>
+    <p class="honesty-text" style="color:var(--ink);font-weight:600;">Низька оцінка — це не зрада. Це точка росту.</p>
+    <label class="human-label" style="margin-top:14px;justify-content:flex-start;">
+      <input type="checkbox" id="form-human-cb" onchange="updateFormBtn('${progId}')">
+      <span class="human-box"></span>
+      <span class="human-text">Я людина і відповідатиму чесно</span>
+    </label>
+  </div>`;
   let lastSec = '';
   qs.forEach(q => {
     if (q.s !== lastSec) {
@@ -988,25 +1005,31 @@ function insightsHtml(calc) {
 function spreadTableHtml(rows) {
   if (rows.length < 2) return '';
   const fkeys = ['V','R','A','T','C','L','f'];
-  const fname = {V:'Рівень (V)',R:'Ролі (R)',A:'Узгодженість',T:'Довіра',C:'Комунікація',L:'Лідерство',f:'Втрати (F)'};
+  const fname = {V:'Рівень людей',R:'Ролі',A:'Узгодженість',T:'Довіра',C:'Комунікація',L:'Лідерство',f:'Втрати'};
   const agged = rows.map(r => aggFactors(r.answers));
 
-  let html = `<div class="block-label">Розкид оцінок учасників</div>
+  let html = `<div class="block-label">Зведені оцінки команди (${rows.length} учасників)</div>
   <div class="stbl-wrap"><table class="stbl">
-    <thead><tr><th>Фактор</th><th>Оцінки</th><th>Середнє</th><th>Розкид</th></tr></thead><tbody>`;
+    <thead><tr><th>Фактор</th><th>Середнє</th><th>Мін</th><th>Макс</th><th>Розкид</th></tr></thead><tbody>`;
 
   fkeys.forEach(k => {
     const vals = agged.map(a => a[k]||0);
-    const mn = Math.min(...vals), mx = Math.max(...vals);
-    const spread = mx-mn;
-    const sc = spread>=4?'hi':spread>=2?'md':'lo';
-    const avg = vals.reduce((s,v)=>s+v,0)/vals.length;
-    const minis = vals.map(v=>`<div class="mini" style="background:${miniColor(v,k==='f')}">${v.toFixed(1)}</div>`).join('');
+    const mn = Math.min(...vals);
+    const mx = Math.max(...vals);
+    const spread = mx - mn;
+    const sc = spread >= 4 ? 'hi' : spread >= 2 ? 'md' : 'lo';
+    const avg = vals.reduce((s,v) => s+v, 0) / vals.length;
+    const isF = k === 'f';
+    const avgColor = isF
+      ? (avg<=4?'#059669':avg<=7?'#d97706':'#e85d3a')
+      : (avg>=7?'#059669':avg>=4?'#d97706':'#e85d3a');
+
     html += `<tr>
       <td>${fname[k]}</td>
-      <td><div class="minis">${minis}</div></td>
-      <td><span class="savg">${avg.toFixed(1)}</span></td>
-      <td><span class="chip ${sc}">${spread>=0.5?'±'+spread.toFixed(1):'—'}</span></td>
+      <td><span class="savg" style="color:${avgColor}">${avg.toFixed(1)}</span></td>
+      <td style="font-size:12px;color:var(--muted)">${mn.toFixed(1)}</td>
+      <td style="font-size:12px;color:var(--muted)">${mx.toFixed(1)}</td>
+      <td><span class="chip ${sc}">${spread >= 0.5 ? '±'+spread.toFixed(1) : '—'}</span></td>
     </tr>`;
   });
   return html + '</tbody></table></div>';
@@ -1084,6 +1107,16 @@ function deltaHtml(calcNow, calcOther, fNow, fOther) {
 // PASSWORD
 const ENTRY_PASSWORD = "1234";
 const LEADER_PASSWORD = "1234";
+
+function updateFormBtn(progId) {
+  const cb = document.getElementById("form-human-cb");
+  // Find submit button in current active screen
+  const teamBtn = document.getElementById("team-sub-btn");
+  const leaderBtn = document.getElementById("leader-sub-btn");
+  const checked = cb ? cb.checked : true;
+  if (teamBtn) { teamBtn.disabled = !checked; teamBtn.style.opacity = checked?"1":"0.5"; }
+  if (leaderBtn) { leaderBtn.disabled = !checked; leaderBtn.style.opacity = checked?"1":"0.5"; }
+}
 
 function updateEntryBtn() {
   const cb = document.getElementById("human-cb");
