@@ -5,8 +5,12 @@
 - `docs/01_tekhnichne_zavdannia.md`: технічне завдання і відкриті питання
 - `docs/02_plan_proiektu.md`: етапи, строки, реєстр документів
 - `docs/03_eskiznyi_rozrakhunok.md`: розміри, гідростатика, маси, остійність (генерується скриптом)
+- `docs/04_rozrakhunok_etapu_2.md`: розгортність поясів, центрування, вітрила, розташування (генерується скриптом)
+- `drawings/VK90-002_*`, `VK90-003_*`: загальне розташування і вітрильне озброєння
+- `drawings/VK90-020_*`: попередні контури розгорток, не для розкрою
 - `drawings/VK90-001_*`: теоретичне креслення (pdf, png, dxf у міліметрах) і таблиця ординат (csv)
 - `calc/hull.py`: параметрична модель корпусу
-- `calc/run.py`: розрахунок і побудова креслень
+- `calc/run.py`: розрахунок і креслення етапу 1
+- `calc/stage2.py`: розрахунок і креслення етапу 2 (запускає і етап 1)
 
-Перерахунок: `pip install numpy scipy matplotlib ezdxf`, далі `cd calc && python3 run.py`.
+Перерахунок: `pip install numpy scipy matplotlib ezdxf`, далі `cd calc && python3 stage2.py`.
