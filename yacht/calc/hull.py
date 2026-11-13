@@ -34,7 +34,14 @@ SHEER = np.array([
     (7.60, 0.880, 1.530), (8.40, 0.440, 1.580), (9.00, 0.000, 1.620),
 ])
 
-_keel = CubicSpline(KEEL[:, 0], KEEL[:, 1], bc_type="natural")
+def spl(x, y):
+    """Кубічний сплайн зі сталою кривиною на кормовій ділянці (а не нульовою, як у природного):
+    крива плавно продовжується за транець, і твірні розгортної поверхні існують до самого зрізу."""
+    nat = CubicSpline(x, y, bc_type="natural")
+    return CubicSpline(x, y, bc_type=((2, float(nat(x[1], 2))), (2, 0.0)))
+
+
+_keel = spl(KEEL[:, 0], KEEL[:, 1])
 
 
 def zk(x):
@@ -48,8 +55,8 @@ class Curve:
         if pts[-1][2] is None:
             pts[-1][2] = zk(self.xend)
         a = np.array(pts, dtype=float)
-        self.fy = CubicSpline(a[:, 0], a[:, 1], bc_type="natural")
-        self.fz = CubicSpline(a[:, 0], a[:, 2], bc_type="natural")
+        self.fy = spl(a[:, 0], a[:, 1])
+        self.fz = spl(a[:, 0], a[:, 2])
 
     def at(self, x):
         if x >= self.xend:

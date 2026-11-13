@@ -8,7 +8,8 @@
 - `docs/04_rozrakhunok_etapu_2.md`: розгортність поясів, центрування, вітрила, розташування (генерується скриптом)
 - `docs/05_verfi.md`: кандидати на побудову, ризики, рекомендовані дії
 - `docs/06_zapyt_propozytsii.md`: проєкт листа верфям
-- `docs/07_ostiinist_z_rubkoiu.md`: остійність з урахуванням рубки (генерується `calc/stage3_stability.py`)
+- `docs/07_ostiinist_z_rubkoiu.md`: остійність з урахуванням рубки (генерується `calc/stage3.py`)
+- `docs/08_navantazhennia_kil_vanty.md`: навантаження на кіль і ванти від перших принципів
 - `drawings/VK90-002_*`, `VK90-003_*`: загальне розташування і вітрильне озброєння
 - `drawings/VK90-020_*`: попередні контури розгорток, не для розкрою
 - `drawings/VK90-001_*`: теоретичне креслення (pdf, png, dxf у міліметрах) і таблиця ординат (csv)
@@ -16,4 +17,4 @@
 - `calc/run.py`: розрахунок і креслення етапу 1
 - `calc/stage2.py`: розрахунок і креслення етапу 2 (запускає і етап 1)
 
-Перерахунок: `pip install numpy scipy matplotlib ezdxf`, далі `cd calc && python3 stage2.py`.
+Перерахунок: `pip install numpy scipy matplotlib ezdxf`, далі `cd calc && python3 stage3.py` (запускає всі етапи).
