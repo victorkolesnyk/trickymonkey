@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/guide_scroll"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="16dp">
+
+        <TextView
+            style="@style/HamirSection"
+            android:layout_marginTop="0dp"
+            android:text="@string/guide_h_limits"
+            android:textColor="@color/warning" />
+
+        <TextView
+            style="@style/HamirBody"
+            android:background="@drawable/panel"
+            android:padding="12dp"
+            android:text="@string/guide_limits" />
+
+        <TextView
+            style="@style/HamirSection"
+            android:text="@string/guide_h_what" />
+
+        <TextView
+            style="@style/HamirBody"
+            android:text="@string/guide_what" />
+
+        <TextView
+            style="@style/HamirSection"
+            android:text="@string/guide_h_placement" />
+
+        <TextView
+            style="@style/HamirBody"
+            android:text="@string/guide_placement" />
+
+        <TextView
+            style="@style/HamirSection"
+            android:text="@string/guide_h_airplane" />
+
+        <TextView
+            style="@style/HamirBody"
+            android:text="@string/guide_airplane" />
+
+        <TextView
+            style="@style/HamirSection"
+            android:text="@string/guide_h_threat" />
+
+        <TextView
+            style="@style/HamirBody"
+            android:text="@string/guide_threat" />
+
+        <TextView
+            style="@style/HamirSection"
+            android:text="@string/guide_h_privacy" />
+
+        <TextView
+            style="@style/HamirBody"
+            android:text="@string/guide_privacy" />
+
+        <TextView
+            style="@style/HamirSection"
+            android:text="@string/guide_h_numbers" />
+
+        <TextView
+            style="@style/HamirBody"
+            android:layout_marginBottom="24dp"
+            android:text="@string/guide_numbers" />
+    </LinearLayout>
+</ScrollView>

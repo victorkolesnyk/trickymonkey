@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.Hamir" parent="@android:style/Theme.Material.Light">
+        <item name="android:colorPrimary">@color/primary</item>
+        <item name="android:colorPrimaryDark">@color/primary_dark</item>
+        <item name="android:colorAccent">@color/accent</item>
+    </style>
+
+    <style name="HamirSection" parent="@android:style/TextAppearance.Material.Subhead">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_marginTop">24dp</item>
+        <item name="android:layout_marginBottom">4dp</item>
+        <item name="android:textStyle">bold</item>
+        <item name="android:textColor">?android:attr/colorAccent</item>
+    </style>
+
+    <style name="HamirBody" parent="@android:style/TextAppearance.Material.Body1">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:textSize">16sp</item>
+        <item name="android:lineSpacingMultiplier">1.15</item>
+    </style>
+
+    <style name="HamirNote" parent="@android:style/TextAppearance.Material.Body1">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:textSize">14sp</item>
+        <item name="android:textColor">?android:attr/textColorSecondary</item>
+        <item name="android:lineSpacingMultiplier">1.1</item>
+    </style>
+
+    <style name="HamirWarning" parent="HamirBody">
+        <item name="android:textColor">@color/warning</item>
+    </style>
+
+    <style name="HamirButton" parent="@android:style/Widget.Material.Button">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:minHeight">56dp</item>
+        <item name="android:textAllCaps">false</item>
+        <item name="android:textSize">16sp</item>
+    </style>
+
+    <style name="HamirButtonPrimary" parent="HamirButton">
+        <item name="android:backgroundTint">@color/primary_button</item>
+        <item name="android:textColor">@color/on_accent</item>
+    </style>
+
+    <style name="HamirButtonBig" parent="HamirButtonPrimary">
+        <item name="android:minHeight">80dp</item>
+        <item name="android:textSize">20sp</item>
+        <item name="android:textStyle">bold</item>
+    </style>
+
+    <style name="HamirChoice">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:minHeight">48dp</item>
+        <item name="android:textSize">16sp</item>
+    </style>
+</resources>

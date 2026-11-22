@@ -2,17 +2,58 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="io.github.victorkolesnyk.hamir">
 
+    <!-- No INTERNET permission on purpose: the app must not be able to reach the network. -->
+
+    <!-- Only for recording enrollment phrases and for calibration. The protection service never opens the microphone. -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.VIBRATE" />
+
     <application
         android:allowBackup="false"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:fullBackupContent="@xml/backup_rules"
+        android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
-        android:theme="@android:style/Theme.DeviceDefault.DayNight">
+        android:largeHeap="true"
+        android:roundIcon="@mipmap/ic_launcher"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.Hamir">
+
         <activity
             android:name=".MainActivity"
-            android:exported="true">
+            android:exported="true"
+            android:launchMode="singleTop">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <activity
+            android:name=".EnrollActivity"
+            android:exported="false"
+            android:label="@string/title_enroll"
+            android:parentActivityName=".MainActivity" />
+
+        <activity
+            android:name=".CalibrateActivity"
+            android:exported="false"
+            android:label="@string/title_calibrate"
+            android:parentActivityName=".MainActivity" />
+
+        <activity
+            android:name=".GuideActivity"
+            android:exported="false"
+            android:label="@string/title_guide"
+            android:parentActivityName=".MainActivity" />
+
+        <service
+            android:name=".ProtectionService"
+            android:exported="false"
+            android:foregroundServiceType="mediaPlayback" />
     </application>
 </manifest>

@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="primary">#FFE0F2F1</color>
+    <color name="primary_dark">#FF00695C</color>
+    <color name="accent">#FF00796B</color>
+    <color name="on_accent">#FFFFFFFF</color>
+    <color name="warning">#FFB3261E</color>
+    <color name="ok">#FF1B5E20</color>
+    <color name="panel">#FFF1F5F4</color>
+    <color name="panel_stroke">#FFB0BEC5</color>
+    <color name="disabled">#FF9E9E9E</color>
+    <color name="ic_launcher_background">#FF00695C</color>
+</resources>

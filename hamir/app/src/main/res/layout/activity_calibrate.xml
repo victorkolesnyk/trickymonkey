@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/cal_scroll"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:fillViewport="true">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="16dp">
+
+        <include layout="@layout/permission_box" />
+
+        <TextView
+            android:id="@+id/cal_title"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/cal_title_intro"
+            android:textAppearance="@android:style/TextAppearance.Material.Headline" />
+
+        <TextView
+            android:id="@+id/cal_body"
+            style="@style/HamirBody"
+            android:layout_marginTop="12dp" />
+
+        <TextView
+            android:id="@+id/cal_detail"
+            style="@style/HamirBody"
+            android:layout_marginTop="12dp"
+            android:textStyle="bold"
+            android:visibility="gone" />
+
+        <ProgressBar
+            android:id="@+id/cal_progress"
+            style="@android:style/Widget.Material.ProgressBar.Horizontal"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:max="100"
+            android:minHeight="12dp"
+            android:visibility="gone" />
+
+        <LinearLayout
+            android:id="@+id/cal_level_box"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:orientation="vertical"
+            android:visibility="gone">
+
+            <TextView
+                style="@style/HamirNote"
+                android:labelFor="@+id/cal_level"
+                android:text="@string/cal_level_label" />
+
+            <ProgressBar
+                android:id="@+id/cal_level"
+                style="@android:style/Widget.Material.ProgressBar.Horizontal"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:max="100"
+                android:minHeight="12dp" />
+        </LinearLayout>
+
+        <Button
+            android:id="@+id/cal_primary"
+            style="@style/HamirButtonBig"
+            android:layout_marginTop="20dp"
+            android:minHeight="72dp"
+            android:text="@string/cal_btn_begin" />
+
+        <Button
+            android:id="@+id/cal_secondary"
+            style="@style/HamirButton"
+            android:layout_marginTop="4dp"
+            android:text="@string/action_cancel"
+            android:visibility="gone" />
+    </LinearLayout>
+</ScrollView>

@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Overlapping voices drawn as level bars. Everything stays inside the 66dp safe zone of the 108dp canvas. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:pathData="M32,48 L32,60"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeLineCap="round"
+        android:strokeWidth="6" />
+    <path
+        android:pathData="M43,40 L43,68"
+        android:strokeColor="#FFB2DFDB"
+        android:strokeLineCap="round"
+        android:strokeWidth="6" />
+    <path
+        android:pathData="M54,33 L54,75"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeLineCap="round"
+        android:strokeWidth="6" />
+    <path
+        android:pathData="M65,42 L65,66"
+        android:strokeColor="#FFB2DFDB"
+        android:strokeLineCap="round"
+        android:strokeWidth="6" />
+    <path
+        android:pathData="M76,49 L76,59"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeLineCap="round"
+        android:strokeWidth="6" />
+</vector>

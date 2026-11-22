@@ -1,0 +1,182 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/main_scroll"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:fillViewport="true">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="16dp">
+
+        <TextView
+            android:id="@+id/main_status"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/status_idle"
+            android:textAppearance="@android:style/TextAppearance.Material.Headline" />
+
+        <TextView
+            android:id="@+id/main_status_detail"
+            style="@style/HamirBody"
+            android:layout_marginTop="4dp"
+            android:visibility="gone" />
+
+        <TextView
+            android:id="@+id/main_warnings"
+            style="@style/HamirWarning"
+            android:layout_marginTop="8dp"
+            android:textStyle="bold"
+            android:visibility="gone" />
+
+        <Button
+            android:id="@+id/main_toggle"
+            style="@style/HamirButtonBig"
+            android:layout_marginTop="12dp"
+            android:enabled="false"
+            android:text="@string/main_toggle_start" />
+
+        <TextView
+            android:id="@+id/main_disclaimer"
+            style="@style/HamirNote"
+            android:layout_marginTop="12dp"
+            android:background="@drawable/panel"
+            android:padding="12dp"
+            android:text="@string/main_disclaimer"
+            android:textColor="?android:attr/textColorPrimary" />
+
+        <LinearLayout
+            android:id="@+id/main_manual_box"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:visibility="gone">
+
+            <TextView
+                style="@style/HamirSection"
+                android:text="@string/section_manual" />
+
+            <TextView
+                style="@style/HamirWarning"
+                android:text="@string/manual_warning" />
+
+            <TextView
+                android:id="@+id/main_manual_value"
+                style="@style/HamirBody"
+                android:layout_marginTop="8dp"
+                android:labelFor="@+id/main_manual_seek" />
+
+            <SeekBar
+                android:saveEnabled="false"
+                android:id="@+id/main_manual_seek"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:max="52"
+                android:minHeight="48dp" />
+        </LinearLayout>
+
+        <TextView
+            style="@style/HamirSection"
+            android:text="@string/section_profiles" />
+
+        <TextView
+            android:id="@+id/main_profile_a"
+            style="@style/HamirBody"
+            android:text="@string/profile_stats_loading" />
+
+        <TextView
+            android:id="@+id/main_profile_b"
+            style="@style/HamirBody"
+            android:layout_marginTop="4dp" />
+
+        <TextView
+            style="@style/HamirNote"
+            android:layout_marginTop="4dp"
+            android:text="@string/profile_hint" />
+
+        <TextView
+            style="@style/HamirSection"
+            android:text="@string/section_calibration" />
+
+        <TextView
+            android:id="@+id/main_calibration"
+            style="@style/HamirBody"
+            android:text="@string/cal_none" />
+
+        <TextView
+            android:id="@+id/main_calibration_note"
+            style="@style/HamirWarning"
+            android:layout_marginTop="4dp"
+            android:text="@string/cal_other_target"
+            android:visibility="gone" />
+
+        <Button
+            android:id="@+id/main_reset_calibration"
+            style="@style/HamirButton"
+            android:layout_marginTop="4dp"
+            android:text="@string/main_reset_calibration"
+            android:visibility="gone" />
+
+        <TextView
+            style="@style/HamirSection"
+            android:text="@string/section_target" />
+
+        <RadioGroup
+            android:id="@+id/main_target_group"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical">
+
+            <RadioButton
+                android:saveEnabled="false"
+                android:id="@+id/main_target_minus5"
+                style="@style/HamirChoice"
+                android:text="@string/target_minus5" />
+
+            <RadioButton
+                android:saveEnabled="false"
+                android:id="@+id/main_target_zero"
+                style="@style/HamirChoice"
+                android:text="@string/target_zero" />
+        </RadioGroup>
+
+        <Switch
+                android:saveEnabled="false"
+            android:id="@+id/main_two_speakers"
+            style="@style/HamirChoice"
+            android:layout_marginTop="8dp"
+            android:text="@string/two_speakers" />
+
+        <TextView
+            style="@style/HamirNote"
+            android:text="@string/two_speakers_hint" />
+
+        <TextView
+            android:id="@+id/main_locked_hint"
+            style="@style/HamirNote"
+            android:layout_marginTop="4dp"
+            android:text="@string/settings_locked_hint"
+            android:visibility="gone" />
+
+        <TextView
+            style="@style/HamirSection"
+            android:text="@string/section_more" />
+
+        <Button
+            android:id="@+id/main_btn_enroll"
+            style="@style/HamirButton"
+            android:text="@string/nav_enroll" />
+
+        <Button
+            android:id="@+id/main_btn_calibrate"
+            style="@style/HamirButton"
+            android:text="@string/nav_calibrate" />
+
+        <Button
+            android:id="@+id/main_btn_guide"
+            style="@style/HamirButton"
+            android:text="@string/nav_guide" />
+    </LinearLayout>
+</ScrollView>

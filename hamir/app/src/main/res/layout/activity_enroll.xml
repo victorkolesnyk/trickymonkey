@@ -1,0 +1,154 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/enroll_scroll"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:fillViewport="true">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="16dp">
+
+        <include layout="@layout/permission_box" />
+
+        <TextView
+            style="@style/HamirNote"
+            android:text="@string/enroll_intro" />
+
+        <RadioGroup
+            android:id="@+id/enroll_profile_group"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:orientation="horizontal">
+
+            <RadioButton
+                android:saveEnabled="false"
+                android:id="@+id/enroll_profile_a"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:minHeight="48dp"
+                android:text="@string/profile_a"
+                android:textSize="16sp" />
+
+            <RadioButton
+                android:saveEnabled="false"
+                android:id="@+id/enroll_profile_b"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="2"
+                android:minHeight="48dp"
+                android:text="@string/profile_b"
+                android:textSize="16sp" />
+        </RadioGroup>
+
+        <TextView
+            android:id="@+id/enroll_counter"
+            style="@style/HamirBody"
+            android:layout_marginTop="4dp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/enroll_phrase_number"
+            style="@style/HamirNote"
+            android:layout_marginTop="12dp" />
+
+        <TextView
+            android:id="@+id/enroll_phrase"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:background="@drawable/panel"
+            android:lineSpacingMultiplier="1.2"
+            android:minHeight="96dp"
+            android:padding="16dp"
+            android:textColor="?android:attr/textColorPrimary"
+            android:textIsSelectable="false"
+            android:textSize="22sp" />
+
+        <TextView
+            android:id="@+id/enroll_phrase_status"
+            style="@style/HamirNote"
+            android:layout_marginTop="4dp" />
+
+        <TextView
+            style="@style/HamirNote"
+            android:layout_marginTop="12dp"
+            android:labelFor="@+id/enroll_level"
+            android:text="@string/enroll_level_label" />
+
+        <ProgressBar
+            android:id="@+id/enroll_level"
+            style="@android:style/Widget.Material.ProgressBar.Horizontal"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:max="100"
+            android:minHeight="12dp" />
+
+        <TextView
+            android:id="@+id/enroll_notice"
+            style="@style/HamirBody"
+            android:layout_marginTop="8dp"
+            android:minHeight="44dp"
+            android:textStyle="bold" />
+
+        <Button
+            android:id="@+id/enroll_record"
+            style="@style/HamirButtonBig"
+            android:layout_marginTop="4dp"
+            android:minHeight="72dp"
+            android:text="@string/enroll_record" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:orientation="horizontal">
+
+            <Button
+                android:id="@+id/enroll_prev"
+                style="@style/HamirButton"
+                android:layout_width="0dp"
+                android:layout_weight="1"
+                android:text="@string/enroll_prev" />
+
+            <Button
+                android:id="@+id/enroll_play"
+                style="@style/HamirButton"
+                android:layout_width="0dp"
+                android:layout_weight="1.4"
+                android:text="@string/enroll_listen" />
+
+            <Button
+                android:id="@+id/enroll_next"
+                style="@style/HamirButton"
+                android:layout_width="0dp"
+                android:layout_weight="1"
+                android:text="@string/enroll_next" />
+        </LinearLayout>
+
+        <TextView
+            style="@style/HamirNote"
+            android:layout_marginTop="8dp"
+            android:text="@string/enroll_hint" />
+
+        <TextView
+            style="@style/HamirSection"
+            android:text="@string/section_delete" />
+
+        <Button
+            android:id="@+id/enroll_delete_profile"
+            style="@style/HamirButton"
+            android:text="@string/enroll_delete_profile"
+            android:textColor="@color/warning" />
+
+        <Button
+            android:id="@+id/enroll_delete_all"
+            style="@style/HamirButton"
+            android:text="@string/enroll_delete_all"
+            android:textColor="@color/warning" />
+    </LinearLayout>
+</ScrollView>
