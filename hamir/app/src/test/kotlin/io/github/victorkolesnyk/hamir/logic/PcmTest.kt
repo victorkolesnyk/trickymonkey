@@ -76,6 +76,15 @@ class PcmTest {
         assertEquals(0, PcmMath.meterPercent(Double.NaN))
     }
 
+    @Test
+    fun rawSourceMeterStillMovesForQuietSpeech() {
+        // Speech peaks around -50 dBFS on the UNPROCESSED source.
+        assertEquals(0, PcmMath.meterPercent(-50.0 - 10.0, PcmMath.METER_FLOOR_TUNED_DBFS))
+        assertEquals(37, PcmMath.meterPercent(-50.0, PcmMath.METER_FLOOR_RAW_DBFS))
+        assertEquals(0, PcmMath.meterPercent(-80.0, PcmMath.METER_FLOOR_RAW_DBFS))
+        assertEquals(100, PcmMath.meterPercent(0.0, PcmMath.METER_FLOOR_RAW_DBFS))
+    }
+
     private fun constant(n: Int) = ShortArray(n) { 10000 }
 
     @Test

@@ -28,6 +28,13 @@ object TestSignals {
         }
     }
 
+    /** Adds stationary white noise of the given level. */
+    fun withNoise(samples: ShortArray, noiseDbfs: Double, seed: Long): ShortArray {
+        val random = Random(seed)
+        val a = amplitude(noiseDbfs)
+        return ShortArray(samples.size) { (samples[it] + random.nextGaussian() * a).roundToInt().coerceIn(-32768, 32767).toShort() }
+    }
+
     fun concat(vararg parts: ShortArray): ShortArray {
         val out = ShortArray(parts.sumOf { it.size })
         var o = 0

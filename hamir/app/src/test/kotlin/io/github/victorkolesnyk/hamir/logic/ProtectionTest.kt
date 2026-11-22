@@ -66,59 +66,238 @@ class ProtectionTest {
         assertFalse(ProtectionPlanner.twoSpeakersAvailable(100, 19))
     }
 
+    private fun now(volume: Int, route: OutputRoute? = OutputRoute.WIRED) = PlaybackConditions(volume, route = route)
+
     @Test
     fun matchingPlaybackRaisesNoWarnings() {
         val plan = ready(AppSettings(calibration = cal))
-        assertEquals(emptySet(), MismatchDetector.check(plan, cal, 10, OutputRoute.WIRED))
+        assertEquals(emptySet(), MismatchDetector.check(plan, cal, now(10)))
     }
 
     @Test
     fun volumeChangeIsDetected() {
         val plan = ready(AppSettings(calibration = cal))
-        val warnings = MismatchDetector.check(plan, cal, 9, OutputRoute.WIRED)
+        val warnings = MismatchDetector.check(plan, cal, now(9))
         assertEquals(setOf(ProtectionWarning.VOLUME_CHANGED), warnings)
         assertTrue(MismatchDetector.hasMismatch(warnings))
+        assertFalse(MismatchDetector.isSilent(warnings))
     }
 
     @Test
-    fun routeChangeIsDetectedButUnknownRouteIsNot() {
+    fun routeTypeIsJudgedOnlyOnceTheRealRouteIsKnown() {
         val plan = ready(AppSettings(calibration = cal))
-        assertEquals(
-            setOf(ProtectionWarning.ROUTE_CHANGED),
-            MismatchDetector.check(plan, cal, 10, OutputRoute.SPEAKER),
-        )
-        assertEquals(emptySet(), MismatchDetector.check(plan, cal, 10, null))
+        assertEquals(setOf(ProtectionWarning.ROUTE_CHANGED), MismatchDetector.check(plan, cal, now(10, OutputRoute.SPEAKER)))
+        assertEquals(emptySet(), MismatchDetector.check(plan, cal, now(10, null)))
     }
 
     @Test
-    fun zeroVolumeIsMutedInEveryMode() {
+    fun routeUnknownForTooLongIsAWarningInEveryMode() {
+        val unknown = PlaybackConditions(10, route = null, routeUnknownTooLong = true)
         val calibrated = ready(AppSettings(calibration = cal))
+        assertEquals(setOf(ProtectionWarning.ROUTE_UNKNOWN), MismatchDetector.check(calibrated, cal, unknown))
+        val manual = ready(AppSettings())
         assertEquals(
-            setOf(ProtectionWarning.MUTED, ProtectionWarning.VOLUME_CHANGED),
-            MismatchDetector.check(calibrated, cal, 0, OutputRoute.WIRED),
+            setOf(ProtectionWarning.ROUTE_UNKNOWN, ProtectionWarning.UNCALIBRATED),
+            MismatchDetector.check(manual, null, unknown),
         )
+        // Once a device is known the flag is moot.
+        assertEquals(emptySet(), MismatchDetector.check(calibrated, cal, unknown.copy(route = OutputRoute.WIRED)))
+    }
+
+    @Test
+    fun zeroVolumeIsMutedInEveryModeAndNotReportedAsAMereVolumeChange() {
+        val calibrated = ready(AppSettings(calibration = cal))
+        val warnings = MismatchDetector.check(calibrated, cal, now(0))
+        assertEquals(setOf(ProtectionWarning.MUTED), warnings)
+        assertTrue(MismatchDetector.isSilent(warnings))
         val manual = ready(AppSettings())
         assertEquals(
             setOf(ProtectionWarning.MUTED, ProtectionWarning.UNCALIBRATED),
-            MismatchDetector.check(manual, null, 0, OutputRoute.SPEAKER),
+            MismatchDetector.check(manual, null, now(0, OutputRoute.SPEAKER)),
         )
+    }
+
+    @Test
+    fun mutedStreamIsSilentAlthoughTheIndexMatches() {
+        val plan = ready(AppSettings(calibration = cal))
+        val warnings = MismatchDetector.check(plan, cal, PlaybackConditions(10, streamMuted = true, route = OutputRoute.WIRED))
+        assertEquals(setOf(ProtectionWarning.MUTED), warnings)
+        assertTrue(MismatchDetector.isSilent(warnings))
+    }
+
+    @Test
+    fun doNotDisturbTotalSilenceIsSilentInEveryMode() {
+        val dnd = PlaybackConditions(10, totalSilence = true, route = OutputRoute.WIRED)
+        val calibrated = MismatchDetector.check(ready(AppSettings(calibration = cal)), cal, dnd)
+        assertEquals(setOf(ProtectionWarning.DND_SILENCE), calibrated)
+        assertTrue(MismatchDetector.isSilent(calibrated))
+        val manual = MismatchDetector.check(ready(AppSettings()), null, dnd)
+        assertTrue(ProtectionWarning.DND_SILENCE in manual && MismatchDetector.isSilent(manual))
     }
 
     @Test
     fun manualModeAlwaysWarnsThatSnrIsNotVerified() {
         val plan = ready(AppSettings())
-        val warnings = MismatchDetector.check(plan, null, 7, OutputRoute.BLUETOOTH)
+        val warnings = MismatchDetector.check(plan, null, now(7, OutputRoute.BLUETOOTH))
         assertEquals(setOf(ProtectionWarning.UNCALIBRATED), warnings)
         assertFalse(MismatchDetector.hasMismatch(warnings))
+        assertFalse(MismatchDetector.isSilent(warnings))
     }
 
     @Test
     fun derivedAndClampedGainAreReported() {
         val settings = AppSettings(targetSnrDb = -5, calibration = cal.copy(targetSnrDb = 0, gainDb = 10.0))
         val plan = ready(settings)
-        val warnings = MismatchDetector.check(plan, settings.calibration, 10, OutputRoute.WIRED)
+        val warnings = MismatchDetector.check(plan, settings.calibration, now(10))
         assertEquals(setOf(ProtectionWarning.DERIVED_GAIN, ProtectionWarning.GAIN_CLAMPED), warnings)
         assertFalse(MismatchDetector.hasMismatch(warnings))
+    }
+
+    // ---------------------------------------------------------------- headline
+
+    private fun running(mode: GainMode, vararg warnings: ProtectionWarning) =
+        ProtectionState(ProtectionStatus.RUNNING, warnings = warnings.toSet(), mode = mode)
+
+    @Test
+    fun onlyCalibratedMatchingAudiblePlaybackIsPresentedAsGood() {
+        assertEquals(Headline.PLAYING_CALIBRATED, running(GainMode.CALIBRATED).headline)
+        assertFalse(Headline.PLAYING_CALIBRATED.alarming)
+        // Any mode other than CALIBRATED, and any warning on top of CALIBRATED except "route unknown"
+        // (which has its own line in the warning list), must change the headline.
+        for (mode in GainMode.values()) {
+            if (mode != GainMode.CALIBRATED) assertTrue(running(mode).headline != Headline.PLAYING_CALIBRATED, mode.name)
+        }
+        for (warning in ProtectionWarning.values()) {
+            if (warning == ProtectionWarning.ROUTE_UNKNOWN) continue
+            assertTrue(running(GainMode.CALIBRATED, warning).headline != Headline.PLAYING_CALIBRATED, warning.name)
+        }
+    }
+
+    @Test
+    fun manualModeIsNeverShownAsVerified() {
+        assertEquals(Headline.PLAYING_UNVERIFIED, running(GainMode.MANUAL, ProtectionWarning.UNCALIBRATED).headline)
+        assertEquals(Headline.PLAYING_UNVERIFIED, running(GainMode.MANUAL).headline)
+        assertFalse(Headline.PLAYING_UNVERIFIED.alarming)
+    }
+
+    @Test
+    fun clampedAndDerivedGainHaveTheirOwnHeadlines() {
+        assertEquals(
+            Headline.PLAYING_LEVEL_NOT_REACHED,
+            running(GainMode.DERIVED, ProtectionWarning.DERIVED_GAIN, ProtectionWarning.GAIN_CLAMPED).headline,
+        )
+        assertTrue(Headline.PLAYING_LEVEL_NOT_REACHED.alarming)
+        assertEquals(Headline.PLAYING_DERIVED, running(GainMode.DERIVED, ProtectionWarning.DERIVED_GAIN).headline)
+    }
+
+    @Test
+    fun mismatchOutranksDerivedAndClamped() {
+        val state = running(GainMode.DERIVED, ProtectionWarning.VOLUME_CHANGED, ProtectionWarning.GAIN_CLAMPED)
+        assertEquals(Headline.PLAYING_MISMATCH, state.headline)
+        assertTrue(state.headline.alarming)
+    }
+
+    @Test
+    fun silenceOutranksEverythingInEveryMode() {
+        for (mode in GainMode.values()) {
+            assertEquals(Headline.SILENT, running(mode, ProtectionWarning.MUTED, ProtectionWarning.UNCALIBRATED).headline)
+            assertEquals(Headline.SILENT, running(mode, ProtectionWarning.DND_SILENCE, ProtectionWarning.VOLUME_CHANGED).headline)
+        }
+        assertTrue(Headline.SILENT.alarming)
+    }
+
+    @Test
+    fun stoppedStatesDistinguishUserStopFromEverythingElse() {
+        assertEquals(Headline.OFF, ProtectionState().headline)
+        assertEquals(Headline.LOADING, ProtectionState(ProtectionStatus.LOADING).headline)
+        assertEquals(Headline.OFF, ProtectionState(ProtectionStatus.STOPPED, stopReason = StopReason.USER).headline)
+        for (reason in StopReason.values()) {
+            if (reason == StopReason.USER) continue
+            val headline = ProtectionState(ProtectionStatus.STOPPED, stopReason = reason).headline
+            assertEquals(Headline.STOPPED_ALERT, headline, reason.name)
+            assertTrue(headline.alarming)
+        }
+    }
+
+    // ---------------------------------------------------------------- route guard
+
+    @Test
+    fun routeIsNotJudgedBeforeTheFirstRealDevice() {
+        val guard = RouteGuard()
+        assertEquals(RouteGuard.Verdict.PENDING, guard.observe(null, 0))
+        assertEquals(RouteGuard.Verdict.PENDING, guard.observe(null, 4999))
+        assertFalse(guard.baselineKnown)
+        assertEquals(RouteGuard.Verdict.PENDING_TOO_LONG, guard.observe(null, 5000))
+        assertEquals(RouteGuard.Verdict.STABLE, guard.observe(17, 6000))
+        assertTrue(guard.baselineKnown)
+        assertEquals(17, guard.baselineDeviceId)
+    }
+
+    @Test
+    fun sameDeviceStaysStable() {
+        val guard = RouteGuard()
+        for (t in 0..100) assertEquals(RouteGuard.Verdict.STABLE, guard.observe(3, t * 1000L))
+    }
+
+    @Test
+    fun anyOtherDeviceIsALossAndStaysOne() {
+        // Wired earbud (id 3) on the target microphone, then Bluetooth earphones (id 9) take the media route.
+        val guard = RouteGuard()
+        guard.observe(3, 0)
+        assertEquals(RouteGuard.Verdict.LOST, guard.observe(9, 1000))
+        // Even if the route comes back by itself: the user was unprotected and must be told.
+        assertEquals(RouteGuard.Verdict.LOST, guard.observe(3, 2000))
+    }
+
+    @Test
+    fun vanishedOutputIsALossAfterAShortGrace() {
+        val guard = RouteGuard(nullGraceMs = 2500)
+        guard.observe(3, 0)
+        assertEquals(RouteGuard.Verdict.STABLE, guard.observe(null, 1000))
+        assertEquals(RouteGuard.Verdict.STABLE, guard.observe(null, 3400))
+        assertEquals(RouteGuard.Verdict.LOST, guard.observe(null, 3500))
+    }
+
+    @Test
+    fun shortGapWhileTheTrackIsRestoredIsTolerated() {
+        val guard = RouteGuard(nullGraceMs = 2500)
+        guard.observe(3, 0)
+        assertEquals(RouteGuard.Verdict.STABLE, guard.observe(null, 1000))
+        assertEquals(RouteGuard.Verdict.STABLE, guard.observe(3, 2000))
+        // The grace period starts over with the next gap.
+        assertEquals(RouteGuard.Verdict.STABLE, guard.observe(null, 10_000))
+        assertEquals(RouteGuard.Verdict.STABLE, guard.observe(null, 12_000))
+        assertEquals(RouteGuard.Verdict.LOST, guard.observe(null, 12_500))
+    }
+
+    @Test
+    fun gapFollowedByAnotherDeviceIsALoss() {
+        val guard = RouteGuard()
+        guard.observe(3, 0)
+        guard.observe(null, 500)
+        assertEquals(RouteGuard.Verdict.LOST, guard.observe(4, 900))
+    }
+
+    // ---------------------------------------------------------------- silence alarm
+
+    @Test
+    fun silenceAlarmSoundsAtOnceAndThenEveryTenSeconds() {
+        val alarm = SilenceAlarm(repeatMs = 10_000)
+        assertFalse(alarm.onObservation(false, 0))
+        assertFalse(alarm.silentNow)
+        val fired = (1..25).filter { alarm.onObservation(true, it * 1000L) }
+        assertEquals(listOf(1, 11, 21), fired)
+        assertTrue(alarm.silentNow)
+    }
+
+    @Test
+    fun silenceAlarmRestartsAfterSoundCameBack() {
+        val alarm = SilenceAlarm(repeatMs = 10_000)
+        assertTrue(alarm.onObservation(true, 1000))
+        assertFalse(alarm.onObservation(true, 2000))
+        assertFalse(alarm.onObservation(false, 3000))
+        assertFalse(alarm.silentNow)
+        assertTrue(alarm.onObservation(true, 4000), "a new silence must alarm immediately")
     }
 
     @Test

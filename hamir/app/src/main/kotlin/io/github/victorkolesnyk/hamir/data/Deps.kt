@@ -5,6 +5,7 @@ import android.content.SharedPreferences
 import android.os.Handler
 import android.os.Looper
 import io.github.victorkolesnyk.hamir.logic.BankStore
+import io.github.victorkolesnyk.hamir.logic.EnvelopeKeyProvider
 import io.github.victorkolesnyk.hamir.logic.KeyValueStore
 import io.github.victorkolesnyk.hamir.logic.Observable
 import io.github.victorkolesnyk.hamir.logic.ProtectionState
@@ -56,7 +57,8 @@ object Deps {
     fun bank(context: Context): BankStore {
         bankStore?.let { return it }
         val root = File(context.applicationContext.filesDir, "bank")
-        return BankStore(root, KeystoreKeyProvider()).also { bankStore = it }
+        val keys = EnvelopeKeyProvider(File(root, "key.bin"), KeystoreWrappingKey())
+        return BankStore(root, keys).also { bankStore = it }
     }
 
     @Synchronized

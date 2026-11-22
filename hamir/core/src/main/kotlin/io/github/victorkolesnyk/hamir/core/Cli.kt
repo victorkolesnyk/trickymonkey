@@ -103,6 +103,9 @@ object Cli {
         val outFile = output ?: throw UsageException("--out is required")
         val duration = seconds ?: throw UsageException("--seconds is required")
         if (config.maxSegmentMs < config.minSegmentMs) throw UsageException("--max-seg must not be below --min-seg")
+        if (config.maxSegmentMs > BabbleGenerator.MAX_SEGMENT_MS) {
+            throw UsageException("--max-seg must not exceed ${BabbleGenerator.MAX_SEGMENT_MS}")
+        }
         val totalSamples = duration * SAMPLE_RATE
         if (totalSamples > 1_000_000_000) throw UsageException("--seconds is too large for a WAV file")
 

@@ -15,6 +15,8 @@ object TakePlayer {
             SAMPLE_RATE, AudioFormat.CHANNEL_OUT_MONO, AudioFormat.ENCODING_PCM_16BIT,
         )
         if (minBytes <= 0) throw IllegalStateException("AudioTrack.getMinBufferSize returned $minBytes")
+        val bufferBytes = maxOf(minBytes * 2, SAMPLE_RATE * 2 / 5)
+        val bufferMillis = bufferBytes / 2 * 1000L / SAMPLE_RATE
         var track: AudioTrack? = null
         try {
             track = AudioTrack.Builder()
@@ -31,7 +33,7 @@ object TakePlayer {
                         .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
                         .build()
                 )
-                .setBufferSizeInBytes(maxOf(minBytes * 2, SAMPLE_RATE * 2 / 5))
+                .setBufferSizeInBytes(bufferBytes)
                 .setTransferMode(AudioTrack.MODE_STREAM)
                 .build()
             if (track.state != AudioTrack.STATE_INITIALIZED) throw IllegalStateException("AudioTrack not initialized")
@@ -49,14 +51,20 @@ object TakePlayer {
                 track.flush()
                 return
             }
-            // Let the buffered tail play out before release; bounded in case the head never advances.
-            track.stop()
-            val deadline = System.currentTimeMillis() + 1500
+            // Let the buffered tail play out. The head position must be read while the track still plays:
+            // after stop() it reads 0. The deadline covers a head that never advances.
+            val deadline = System.currentTimeMillis() + bufferMillis + 500
             while (!stop.get() && System.currentTimeMillis() < deadline) {
                 // Mask: the head position is an unsigned 32-bit frame counter.
                 val head = track.playbackHeadPosition.toLong() and 0xFFFFFFFFL
                 if (head >= pcm.size) break
                 Thread.sleep(20)
+            }
+            if (stop.get()) {
+                track.pause()
+                track.flush()
+            } else {
+                track.stop()
             }
         } catch (e: InterruptedException) {
             Thread.currentThread().interrupt()

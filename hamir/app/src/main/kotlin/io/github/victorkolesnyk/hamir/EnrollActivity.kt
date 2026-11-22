@@ -228,6 +228,7 @@ class EnrollActivity : BaseActivity() {
         Notice.MIC_ERROR -> R.string.notice_mic_error
         Notice.SAVE_ERROR -> R.string.notice_save_error
         Notice.PLAY_ERROR -> R.string.notice_play_error
+        Notice.KEY_LOST -> R.string.notice_key_lost
         Notice.PROFILE_DELETED -> R.string.notice_profile_deleted
         Notice.ALL_DELETED -> R.string.notice_all_deleted
         Notice.DELETE_ERROR -> R.string.notice_delete_error

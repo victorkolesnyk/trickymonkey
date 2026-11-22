@@ -114,6 +114,22 @@ class CliTest {
     }
 
     @Test
+    fun speakerWithTooLittleSpeechIsLeftOutAndReported() {
+        val little = File(dir, "little").apply { mkdirs() }
+        Wav.write(File(little, "one.wav"), takesB[3], rates[3])
+        val both = File(dir, "both.wav")
+        val alone = File(dir, "alone.wav")
+        val result = run("generate", "--in", speakerA.path, "--in", little.path, "--out", both.path, "--seconds", "3", "--seed", "9")
+        assertEquals(Cli.EXIT_OK, result.code, result.err)
+        assertTrue(result.out.contains("left out"), result.out)
+        assertEquals(0, run("generate", "--in", speakerA.path, "--out", alone.path, "--seconds", "3", "--seed", "9").code)
+        assertContentEquals(alone.readBytes(), both.readBytes())
+        // The same take is enough for a smaller configuration.
+        val small = run("generate", "--in", little.path, "--out", both.path, "--seconds", "3", "--voices", "2", "--max-seg", "1000")
+        assertEquals(Cli.EXIT_OK, small.code, small.err)
+    }
+
+    @Test
     fun usageErrorsReturnExitCodeTwo() {
         val output = File(dir, "never.wav")
         val cases = listOf(
@@ -131,6 +147,9 @@ class CliTest {
             arrayOf("generate", "--in", speakerA.path, "--out", output.path, "--seconds", "5", "--speed-jitter", "2"),
             arrayOf("generate", "--in", speakerA.path, "--out", output.path, "--seconds", "5", "--min-seg", "900", "--max-seg", "300"),
             arrayOf("generate", "--in", speakerA.path, "--out", output.path, "--seconds", "5", "--bogus", "1"),
+            arrayOf("generate", "--in", speakerA.path, "--out", output.path, "--seconds", "5", "--min-seg", "49"),
+            arrayOf("generate", "--in", speakerA.path, "--out", output.path, "--seconds", "5", "--min-seg", "5", "--max-seg", "5"),
+            arrayOf("generate", "--in", speakerA.path, "--out", output.path, "--seconds", "5", "--max-seg", "60001"),
         )
         for (args in cases) {
             val result = run(*args)
@@ -163,6 +182,13 @@ class CliTest {
         val noSpeech = run("generate", "--in", silent.path, "--out", output.path, "--seconds", "5")
         assertEquals(Cli.EXIT_FAILED, noSpeech.code)
         assertTrue(noSpeech.err.contains("no usable speech"), noSpeech.err)
+
+        // One take is real speech but far too little of it for eight voices.
+        val little = File(dir, "little").apply { mkdirs() }
+        Wav.write(File(little, "one.wav"), takesA[3], rates[3])
+        val tooLittle = run("generate", "--in", little.path, "--out", output.path, "--seconds", "5")
+        assertEquals(Cli.EXIT_FAILED, tooLittle.code)
+        assertTrue(tooLittle.err.contains("not enough speech") && tooLittle.err.contains("17.0 s"), tooLittle.err)
 
         val broken = File(dir, "broken").apply { mkdirs() }
         File(broken, "broken.wav").writeText("RIFF but not really")

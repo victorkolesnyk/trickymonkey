@@ -7,10 +7,19 @@ import java.io.IOException
 import java.util.Locale
 import javax.crypto.SecretKey
 
-/** Access to the AES-256-GCM key that protects the voice bank. The Android implementation uses AndroidKeyStore. */
+/**
+ * Access to the AES-256 data key that encrypts the takes. In the app it is an [EnvelopeKeyProvider];
+ * tests use an in-memory key. May be slow; never call on the UI thread.
+ */
 interface BankKeyProvider {
-    /** Returns the existing key or creates it. May be slow; never call on the UI thread. */
-    fun getOrCreateKey(): SecretKey
+    /**
+     * The key created earlier, or null when there is none.
+     * @throws BankKeyLostException when a key was stored but can no longer be opened
+     */
+    fun existingKey(): SecretKey?
+
+    /** Creates and stores a new key, replacing any previous one. */
+    fun createKey(): SecretKey
 
     /** Destroys the key. Every take encrypted with it becomes unreadable. */
     fun deleteKey()
@@ -27,12 +36,16 @@ interface TakeCodec {
     }
 }
 
-/** Result of reading a whole profile: unreadable files are counted, not thrown. */
-class LoadedTakes(val takes: List<ShortArray>, val failed: Int)
+/**
+ * Result of reading a whole profile: unreadable files are counted, not thrown.
+ * [keyLost] means nothing could be read because the key itself is gone.
+ */
+class LoadedTakes(val takes: List<ShortArray>, val failed: Int, val keyLost: Boolean = false)
 
 /**
  * Directory layout and bookkeeping of the encrypted voice bank:
- * `<root>/<A|B>/<NNN>.hmr`, NNN = phrase number 001..999.
+ * `<root>/<A|B>/<NNN>.hmr`, NNN = phrase number 001..999. The wrapped data key lives next to the
+ * profile directories in `<root>/key.bin` and is managed by the [BankKeyProvider].
  *
  * All methods do disk and crypto work and must run off the UI thread.
  * Writes are atomic (temp file + rename), so concurrent readers see either the old or the new take.
@@ -70,7 +83,7 @@ class BankStore(
         if (!dir.isDirectory && !dir.mkdirs() && !dir.isDirectory) {
             throw IOException("cannot create $dir")
         }
-        val data = codec.encrypt(pcm, keys.getOrCreateKey())
+        val data = codec.encrypt(pcm, keyForWriting())
         val tmp = File(dir, target.name + TMP_SUFFIX)
         try {
             tmp.outputStream().use { out ->
@@ -91,7 +104,9 @@ class BankStore(
     @Throws(IOException::class, java.security.GeneralSecurityException::class)
     fun loadTake(profile: Profile, number: Int): ShortArray {
         val file = takeFile(profile, number)
-        return codec.decrypt(file.readBytes(), keys.getOrCreateKey())
+        val data = file.readBytes()
+        val key = keys.existingKey() ?: throw BankKeyLostException("no key for $file")
+        return codec.decrypt(data, key)
     }
 
     /**
@@ -109,10 +124,10 @@ class BankStore(
         val takes = ArrayList<ShortArray>(files.size)
         var failed = 0
         val key = try {
-            keys.getOrCreateKey()
+            keys.existingKey()
         } catch (e: Exception) {
-            return LoadedTakes(emptyList(), files.size)
-        }
+            null
+        } ?: return LoadedTakes(emptyList(), files.size, keyLost = true)
         var done = 0
         for ((_, file) in files) {
             if (isCancelled()) break
@@ -132,7 +147,7 @@ class BankStore(
     /** Removes every file of the profile, including leftovers that are not takes. */
     fun deleteProfile(profile: Profile): Boolean = profileDir(profile).deleteRecursively()
 
-    /** Removes all profiles and destroys the key, so remnants on flash cannot be decrypted. */
+    /** Removes all profiles, the wrapped key file and the key itself, so remnants on flash cannot be decrypted. */
     fun deleteAll(): Boolean {
         var ok = true
         for (profile in Profile.values()) ok = deleteProfile(profile) && ok
@@ -143,6 +158,20 @@ class BankStore(
             ok = false
         }
         return ok
+    }
+
+    /** True when any profile holds at least one take. */
+    fun hasAnyTake(): Boolean = Profile.values().any { takeFiles(it).isNotEmpty() }
+
+    /**
+     * A new key may only be created for an empty bank. If takes exist but their key is gone,
+     * writing with a fresh key would silently mix readable and unreadable takes: refuse instead,
+     * the user has to delete the voice data and record again.
+     */
+    private fun keyForWriting(): SecretKey {
+        keys.existingKey()?.let { return it }
+        if (hasAnyTake()) throw BankKeyLostException("takes exist but their key is missing")
+        return keys.createKey()
     }
 
     private fun takeFiles(profile: Profile): List<Pair<Int, File>> {

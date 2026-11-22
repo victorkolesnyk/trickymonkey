@@ -49,8 +49,14 @@ object PcmMath {
         else -> target
     }
 
+    /** Meter floor for sources with voice-recognition tuning (about -22 dBFS at 90 dB SPL). */
+    const val METER_FLOOR_TUNED_DBFS = -60.0
+
+    /** Meter floor for the UNPROCESSED source (about -36 dBFS at 94 dB SPL): speech sits near -60 dBFS. */
+    const val METER_FLOOR_RAW_DBFS = -80.0
+
     /** Maps a level in dBFS to a 0..100 meter position; [floorDbfs] and below is 0. */
-    fun meterPercent(levelDbfs: Double, floorDbfs: Double = -60.0): Int {
+    fun meterPercent(levelDbfs: Double, floorDbfs: Double = METER_FLOOR_TUNED_DBFS): Int {
         if (levelDbfs.isNaN()) return 0
         val fraction = (levelDbfs - floorDbfs) / -floorDbfs
         return (fraction * 100.0).toInt().coerceIn(0, 100)

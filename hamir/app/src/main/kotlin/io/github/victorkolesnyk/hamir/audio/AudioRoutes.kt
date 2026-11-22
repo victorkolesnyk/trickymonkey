@@ -34,12 +34,10 @@ object AudioRoutes {
     }
 
     /**
-     * Current media route. [routedDeviceType] comes from AudioTrack.getRoutedDevice() while playing and is
-     * authoritative; without it the connected outputs are inspected (Bluetooth, then wired, then speaker).
-     * Returns null when nothing can be determined.
+     * Guess from the connected outputs (Bluetooth, then wired, then speaker), for moments when no track
+     * is playing. Never used to judge a running playback: that relies on AudioTrack.getRoutedDevice().
      */
-    fun current(audioManager: AudioManager, routedDeviceType: Int?): OutputRoute? {
-        if (routedDeviceType != null) return classify(routedDeviceType)
+    fun guess(audioManager: AudioManager): OutputRoute? {
         val routes = try {
             audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS).map { classify(it.type) }
         } catch (e: RuntimeException) {

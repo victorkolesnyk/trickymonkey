@@ -20,18 +20,19 @@ import java.util.Locale
 /** Shared plumbing of the screens: up navigation, one tracked dialog, the microphone permission box. */
 abstract class BaseActivity : Activity() {
     private var dialog: AlertDialog? = null
-    private var micDeniedForever = false
+    /** A request was answered with "denied" at least once: offer the settings screen as a second way. */
+    private var micDenied = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         // Hardware volume keys always change the media volume, the one the noise is played with.
         volumeControlStream = AudioManager.STREAM_MUSIC
-        micDeniedForever = savedInstanceState?.getBoolean(KEY_MIC_DENIED) ?: false
+        micDenied = savedInstanceState?.getBoolean(KEY_MIC_DENIED) ?: false
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
         super.onSaveInstanceState(outState)
-        outState.putBoolean(KEY_MIC_DENIED, micDeniedForever)
+        outState.putBoolean(KEY_MIC_DENIED, micDenied)
     }
 
     override fun onDestroy() {
@@ -66,34 +67,31 @@ abstract class BaseActivity : Activity() {
     protected fun hasMicPermission(): Boolean = hasPermission(Manifest.permission.RECORD_AUDIO)
 
     /**
-     * Keeps the explanation box (layout/permission_box) in sync with the permission:
-     * hidden when granted, otherwise it explains why the microphone is needed and offers the request.
+     * Keeps the explanation box (layout/permission_box) in sync with the permission: hidden when granted,
+     * otherwise it explains why the microphone is needed and offers the request. "Grant" always stays the
+     * primary action: a dismissed system dialog also reports "denied" and cannot be told from a final
+     * refusal. After any denial the app settings are offered as a second way.
      */
     protected fun updateMicPermissionBox() {
         val box = findViewById<View>(R.id.permission_box) ?: return
-        val text = findViewById<TextView>(R.id.permission_text)
-        val button = findViewById<Button>(R.id.permission_button)
         if (hasMicPermission()) {
-            micDeniedForever = false
+            micDenied = false
             box.visibility = View.GONE
             return
         }
         box.visibility = View.VISIBLE
-        if (micDeniedForever) {
-            text.setText(R.string.perm_mic_denied_forever)
-            button.setText(R.string.action_open_settings)
-            button.setOnClickListener { openAppSettings() }
-        } else {
-            text.setText(R.string.perm_mic_rationale)
-            button.setText(R.string.action_grant)
-            button.setOnClickListener { requestMicPermission() }
-        }
+        findViewById<Button>(R.id.permission_button).setOnClickListener { requestMicPermission() }
+        val settingsVisibility = if (micDenied) View.VISIBLE else View.GONE
+        findViewById<TextView>(R.id.permission_settings_hint).visibility = settingsVisibility
+        val settingsButton = findViewById<Button>(R.id.permission_settings_button)
+        settingsButton.visibility = settingsVisibility
+        settingsButton.setOnClickListener { openAppSettings() }
     }
 
     /** Returns true when recording may start; otherwise asks for the permission (the box explains why). */
     protected fun ensureMicPermission(): Boolean {
         if (hasMicPermission()) return true
-        if (micDeniedForever) updateMicPermissionBox() else requestMicPermission()
+        requestMicPermission()
         // The box sits at the top of the scrolling content: bring it into view.
         (findViewById<View>(R.id.permission_box)?.parent?.parent as? ScrollView)?.smoothScrollTo(0, 0)
         return false
@@ -106,10 +104,8 @@ abstract class BaseActivity : Activity() {
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         if (requestCode != REQUEST_MIC) return
-        val granted = grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED
-        // Denied and the system will not ask again: only the settings screen can help now.
-        micDeniedForever = !granted && grantResults.isNotEmpty() &&
-            !shouldShowRequestPermissionRationale(Manifest.permission.RECORD_AUDIO)
+        // An empty result means the request was interrupted, not answered.
+        if (grantResults.isNotEmpty() && grantResults[0] != PackageManager.PERMISSION_GRANTED) micDenied = true
         updateMicPermissionBox()
     }
 
@@ -125,7 +121,7 @@ abstract class BaseActivity : Activity() {
     companion object {
         const val REQUEST_MIC = 1
         const val REQUEST_NOTIFICATIONS = 2
-        private const val KEY_MIC_DENIED = "mic_denied_forever"
+        private const val KEY_MIC_DENIED = "mic_denied"
 
         val UKRAINIAN: Locale = Locale.forLanguageTag("uk-UA")
 
@@ -134,5 +130,8 @@ abstract class BaseActivity : Activity() {
             val text = String.format(UKRAINIAN, if (signed) "%+.1f" else "%.1f", value)
             return text.replace('-', '−')
         }
+
+        /** Whole decibels with a typographic minus: "−5", "0". */
+        fun formatDb(value: Int): String = value.toString().replace('-', '−')
     }
 }

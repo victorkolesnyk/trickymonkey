@@ -163,6 +163,26 @@ class CalibrationSessionTest {
     }
 
     @Test
+    fun quietRawMicrophoneLevelsStillCalibrate() {
+        // UNPROCESSED source: speech near -65 dBFS, ambient near -90 dBFS. Only differences matter.
+        val done = assertIs<CalibrationPhase.Done>(simulate(pathDb = -25.0, ambient = -90.0, speech = -65.0, target = -5.0))
+        // Needed: noise at -60 dBFS = -20 + gain - 25  ->  gain = -15.
+        assertTrue(abs(done.outcome.gainDb - (-15.0)) <= 1.01, "gain ${done.outcome.gainDb}")
+        assertTrue(abs(done.outcome.achievedSnrDb - (-5.0)) <= 1.01)
+
+        val s = CalibrationSession(-5.0)
+        s.submitAmbient(-90.0)
+        assertIs<CalibrationPhase.Noise>(s.submitSpeech(-65.0), "speech 25 dB above ambient must be accepted at any absolute level")
+    }
+
+    @Test
+    fun realSolverAsksForLessVolumeWhenMinimumGainIsStillTooLoud() {
+        // Earbud so loud that even -40 dB gain overshoots the target of -60 dBFS.
+        val failed = assertIs<CalibrationPhase.Failed>(simulate(pathDb = 10.0, ambient = -90.0, speech = -65.0, target = -5.0))
+        assertEquals(CalibrationFailure.NEED_LESS_VOLUME, failed.reason)
+    }
+
+    @Test
     fun realSolverReportsMicClipping() {
         val s = CalibrationSession(-5.0)
         s.submitAmbient(-60.0)

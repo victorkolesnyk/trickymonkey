@@ -345,10 +345,12 @@ data class BabbleConfig(
  *
  * Banks without enough speech for the configuration ([VoiceBank.isUsable]) are ignored.
  *
- * Real-time behaviour: [read] itself never allocates and never touches [Random] except to refill
- * a preallocated pool of [RANDOM_POOL_BYTES] random bytes with a single Random.nextBytes call,
- * about once a minute with the default configuration. Whether that call allocates or locks is up
- * to the Random implementation. Bank audio is shared, not copied.
+ * Real-time behaviour: the code of [read] never allocates. It touches [Random] in one way only:
+ * when its preallocated pool of [RANDOM_POOL_BYTES] random bytes runs out (about every 75 s with
+ * the default configuration) it refills it with a single Random.nextBytes(pool) call. Whether that
+ * call allocates or locks is up to the Random implementation: java.util.Random does neither;
+ * the NativePRNG behind SecureRandom on a desktop JDK allocates about 25 KB of garbage per
+ * refill inside the JDK. Bank audio is shared, not copied.
  */
 class BabbleGenerator(
     banks: List<VoiceBank>,
@@ -469,7 +471,8 @@ class BabbleGenerator(
 
     /**
      * Fills out[offset until offset+length] completely with the next samples at [SAMPLE_RATE].
-     * Does not allocate; see the class comment for the one call it may make into [Random].
+     * Allocates nothing itself; roughly once a minute it calls Random.nextBytes on a preallocated
+     * array (see the class comment), and that call is as allocation-free as the Random it was given.
      */
     fun read(out: ShortArray, offset: Int = 0, length: Int = out.size - offset) {
         require(offset >= 0 && length >= 0 && offset <= out.size - length) {
@@ -717,6 +720,9 @@ class BabbleGenerator(
         /** Shortest accepted [BabbleConfig.minSegmentMs]. */
         const val MIN_SEGMENT_MS = 50
 
+        /** Longest accepted [BabbleConfig.maxSegmentMs]. */
+        const val MAX_SEGMENT_MS = 60_000
+
         /** Highest accepted [BabbleConfig.targetRmsDbfs]. */
         const val MAX_TARGET_RMS_DBFS = -10.0
 
@@ -748,7 +754,6 @@ class BabbleGenerator(
         private const val SNAP_SAMPLES = SAMPLE_RATE * 150 / 1000
 
         private const val MAX_START_TRIES = 4
-        private const val MAX_SEGMENT_MS = 60_000
         private const val MAX_SPEED_JITTER = 0.5
     }
 }

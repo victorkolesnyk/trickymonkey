@@ -16,8 +16,7 @@ import android.widget.Toast
 import io.github.victorkolesnyk.hamir.data.Deps
 import io.github.victorkolesnyk.hamir.logic.AppSettings
 import io.github.victorkolesnyk.hamir.logic.CalibrationRecord
-import io.github.victorkolesnyk.hamir.logic.GainMode
-import io.github.victorkolesnyk.hamir.logic.MismatchDetector
+import io.github.victorkolesnyk.hamir.logic.Headline
 import io.github.victorkolesnyk.hamir.logic.OutputRoute
 import io.github.victorkolesnyk.hamir.logic.Profile
 import io.github.victorkolesnyk.hamir.logic.ProfileStats
@@ -65,6 +64,9 @@ class MainActivity : BaseActivity() {
 
     /** The process died while protection was on; shown until the next start. */
     private var interrupted = false
+
+    /** Slider value not yet written to the settings. */
+    private var pendingManualGain: Double? = null
 
     private val stateListener: (ProtectionState) -> Unit = { render() }
 
@@ -115,23 +117,43 @@ class MainActivity : BaseActivity() {
         }
         manualSeek.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
             override fun onProgressChanged(seekBar: SeekBar, progress: Int, fromUser: Boolean) {
+                // Touch, keyboard and accessibility changes all arrive here with fromUser = true.
                 if (!fromUser || rendering) return
-                val gain = seekToGain(progress)
-                manualValueView.text = getString(R.string.manual_gain_label, formatDb(gain, signed = true))
-                // Live change while the noise plays; persisted when the finger lifts.
-                // The slider is only visible without a calibration, i.e. in manual mode.
-                if (Deps.protectionState.value.active) {
-                    ProtectionService.setManualGain(this@MainActivity, gain)
-                }
+                onManualGainChosen(seekToGain(progress))
             }
 
             override fun onStartTrackingTouch(seekBar: SeekBar) = Unit
 
-            override fun onStopTrackingTouch(seekBar: SeekBar) {
-                val gain = seekToGain(seekBar.progress)
-                updateSettings { it.copy(manualGainDb = gain) }
-            }
+            override fun onStopTrackingTouch(seekBar: SeekBar) = flushManualGain()
         })
+    }
+
+    /** New slider value: shown and applied to the playing noise at once, stored after a short pause. */
+    private fun onManualGainChosen(gain: Double) {
+        val current = snapshot ?: return
+        snapshot = Snapshot(current.settings.copy(manualGainDb = gain), current.statsA, current.statsB)
+        manualValueView.text = getString(R.string.manual_gain_label, formatDb(gain, signed = true))
+        // The slider is only visible without a calibration, i.e. in manual mode.
+        if (Deps.protectionState.value.active) ProtectionService.setManualGain(this, gain)
+        pendingManualGain = gain
+        Deps.main.removeCallbacks(persistManualGain)
+        Deps.main.postDelayed(persistManualGain, MANUAL_GAIN_DEBOUNCE_MS)
+    }
+
+    private val persistManualGain = Runnable { flushManualGain() }
+
+    private fun flushManualGain() {
+        Deps.main.removeCallbacks(persistManualGain)
+        val gain = pendingManualGain ?: return
+        pendingManualGain = null
+        val app = applicationContext
+        Deps.io.execute {
+            try {
+                Deps.settings(app).update { it.copy(manualGainDb = gain) }
+            } catch (e: Exception) {
+                // The next refresh shows what is really stored.
+            }
+        }
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
@@ -147,6 +169,7 @@ class MainActivity : BaseActivity() {
     }
 
     override fun onStop() {
+        flushManualGain()
         Deps.protectionState.removeListener(stateListener)
         super.onStop()
     }
@@ -277,40 +300,36 @@ class MainActivity : BaseActivity() {
     }
 
     private fun renderStatus(state: ProtectionState) {
-        val mismatch = MismatchDetector.hasMismatch(state.warnings)
-        val stoppedAbnormally = state.status == ProtectionStatus.STOPPED &&
-            state.stopReason != null && state.stopReason != StopReason.USER
-        val showInterrupted = interrupted && !state.active && !stoppedAbnormally
+        // The process died while the noise played: show it like any other unwanted stop.
+        val showInterrupted = interrupted && !state.active && state.headline == Headline.OFF
+        val headline = if (showInterrupted) Headline.STOPPED_ALERT else state.headline
 
-        statusView.text = when {
-            state.status == ProtectionStatus.LOADING && state.loadTotal > 0 ->
-                getString(R.string.status_loading_progress, state.loadDone, state.loadTotal)
-            state.status == ProtectionStatus.LOADING -> getString(R.string.status_loading)
-            state.status == ProtectionStatus.RUNNING && mismatch -> getString(R.string.status_running_mismatch)
-            state.status == ProtectionStatus.RUNNING -> getString(R.string.status_running)
-            stoppedAbnormally || showInterrupted -> getString(R.string.status_stopped_alert)
-            else -> getString(R.string.status_idle)
+        statusView.text = if (headline == Headline.LOADING && state.loadTotal > 0) {
+            getString(R.string.status_loading_progress, state.loadDone, state.loadTotal)
+        } else {
+            getString(ProtectionService.headlineText(headline))
         }
-        val alarming = stoppedAbnormally || showInterrupted || (state.status == ProtectionStatus.RUNNING && mismatch)
+        // Green is reserved for the one state that was actually measured.
         statusView.setTextColor(
             getColor(
                 when {
-                    alarming -> R.color.warning
-                    state.status == ProtectionStatus.RUNNING -> R.color.ok
+                    headline.alarming -> R.color.warning
+                    headline == Headline.PLAYING_CALIBRATED -> R.color.ok
                     else -> R.color.accent
                 }
             )
         )
 
         val detail: String? = when {
-            state.status == ProtectionStatus.RUNNING -> when (state.mode) {
-                GainMode.CALIBRATED -> getString(R.string.mode_calibrated, formatDb(state.gainDb, signed = true))
-                GainMode.DERIVED -> getString(R.string.mode_derived, formatDb(state.gainDb, signed = true))
-                GainMode.MANUAL -> getString(R.string.mode_manual, formatDb(state.gainDb, signed = true))
-                null -> null
+            state.status == ProtectionStatus.RUNNING -> {
+                val gain = getString(R.string.mode_gain, formatDb(state.gainDb, signed = true))
+                // Lets the user see at a glance when the noise goes somewhere unexpected.
+                val route = state.route
+                if (route == null) gain else gain + " " + getString(R.string.mode_route, getString(routeText(route)))
             }
-            stoppedAbnormally -> getString(ProtectionService.stopReasonText(state.stopReason ?: StopReason.INTERRUPTED))
             showInterrupted -> getString(R.string.stop_interrupted)
+            headline == Headline.STOPPED_ALERT ->
+                getString(ProtectionService.stopReasonText(state.stopReason ?: StopReason.INTERRUPTED))
             else -> null
         }
         statusDetailView.text = detail ?: ""
@@ -354,8 +373,10 @@ class MainActivity : BaseActivity() {
             calibrationNoteView.visibility = View.GONE
             resetCalibrationButton.visibility = View.GONE
             manualBox.visibility = View.VISIBLE
-            if (!manualSeek.isPressed) {
+            if (!manualSeek.isPressed && manualSeek.progress != gainToSeek(settings.manualGainDb)) {
                 manualSeek.progress = gainToSeek(settings.manualGainDb)
+            }
+            if (!manualSeek.isPressed) {
                 manualValueView.text =
                     getString(R.string.manual_gain_label, formatDb(settings.manualGainDb, signed = true))
             }
@@ -379,7 +400,7 @@ class MainActivity : BaseActivity() {
             R.string.cal_summary,
             time,
             formatDb(record.achievedSnrDb),
-            record.targetSnrDb,
+            formatDb(record.targetSnrDb),
             record.musicVolumeIndex,
             getString(routeText(record.route)),
         )
@@ -387,6 +408,7 @@ class MainActivity : BaseActivity() {
 
     companion object {
         private const val KEY_INTERRUPTED = "interrupted"
+        private const val MANUAL_GAIN_DEBOUNCE_MS = 400L
         private val SEEK_MAX = (AppSettings.MAX_GAIN_DB - AppSettings.MIN_GAIN_DB).toInt()
 
         fun seekToGain(progress: Int): Double = AppSettings.clampGain(AppSettings.MIN_GAIN_DB + progress)
@@ -406,6 +428,8 @@ class MainActivity : BaseActivity() {
             ProtectionWarning.VOLUME_CHANGED -> R.string.warn_volume_changed
             ProtectionWarning.ROUTE_CHANGED -> R.string.warn_route_changed
             ProtectionWarning.MUTED -> R.string.warn_muted
+            ProtectionWarning.DND_SILENCE -> R.string.warn_dnd
+            ProtectionWarning.ROUTE_UNKNOWN -> R.string.warn_route_unknown
             ProtectionWarning.DERIVED_GAIN -> R.string.warn_derived_gain
             ProtectionWarning.GAIN_CLAMPED -> R.string.warn_gain_clamped
         }

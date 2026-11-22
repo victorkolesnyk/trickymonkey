@@ -24,6 +24,7 @@ object BankLoader {
         val totals = profiles.map { store.takeNumbers(it).size }
         val total = totals.sum()
         val banks = ArrayList<VoiceBank>(profiles.size)
+        val config = BabbleConfig()
         var base = 0
         var unreadable = 0
         for ((index, profile) in profiles.withIndex()) {
@@ -33,13 +34,14 @@ object BankLoader {
             if (loaded.takes.size < EnrollmentRules.MIN_TAKES) return BankLoadResult.Unreadable
             unreadable += loaded.failed
             val bank = VoiceBank.fromUtterances(loaded.takes)
-            if (bank.segmentCount <= 0) return BankLoadResult.Unreadable
+            // Core ignores banks with too little material; a profile the user selected must not vanish silently.
+            if (!bank.isUsable(config)) return BankLoadResult.Unreadable
             banks.add(bank)
             base += totals[index]
         }
         if (banks.isEmpty()) return BankLoadResult.Unreadable
         return try {
-            BankLoadResult.Ready(BabbleGenerator(banks, BabbleConfig()), unreadable)
+            BankLoadResult.Ready(BabbleGenerator(banks, config), unreadable)
         } catch (e: IllegalArgumentException) {
             BankLoadResult.Unreadable
         }

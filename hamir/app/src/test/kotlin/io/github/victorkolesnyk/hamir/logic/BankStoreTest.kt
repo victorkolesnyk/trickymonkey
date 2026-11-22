@@ -16,14 +16,21 @@ import kotlin.test.assertNotEquals
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
-/** In-memory replacement for the AndroidKeyStore key. */
+/** In-memory replacement for the envelope key provider. */
 class MemoryKeyProvider : BankKeyProvider {
     var key: SecretKey? = null
     var created = 0
     var deleted = 0
 
-    override fun getOrCreateKey(): SecretKey {
-        key?.let { return it }
+    /** Simulates a stored key that can no longer be opened. */
+    var broken = false
+
+    override fun existingKey(): SecretKey? {
+        if (broken) throw BankKeyLostException("broken")
+        return key
+    }
+
+    override fun createKey(): SecretKey {
         val generator = KeyGenerator.getInstance("AES")
         generator.init(256)
         created++
@@ -32,6 +39,7 @@ class MemoryKeyProvider : BankKeyProvider {
 
     override fun deleteKey() {
         key = null
+        broken = false
         deleted++
     }
 }
@@ -103,7 +111,8 @@ class BankStoreTest {
         val loaded = store.loadAll(Profile.A)
         assertEquals(0, loaded.takes.size)
         assertEquals(0, loaded.failed)
-        assertEquals(0, keys.created, "listing must not create a key")
+        assertEquals(0, keys.created, "reading must not create a key")
+        assertFailsWith<java.io.IOException> { store.loadTake(Profile.A, 1) }
     }
 
     @Test
@@ -198,17 +207,67 @@ class BankStoreTest {
     }
 
     @Test
-    fun takesWrittenWithALostKeyAreCountedAsFailed() {
+    fun firstSaveCreatesTheKeyAndLaterSavesReuseIt() {
+        store.saveTake(Profile.A, 1, take(100))
+        store.saveTake(Profile.B, 1, take(100))
+        store.saveTake(Profile.A, 2, take(100))
+        assertEquals(1, keys.created)
+    }
+
+    @Test
+    fun lostKeyMakesTakesUnreadableAndIsReported() {
         store.saveTake(Profile.A, 1, take(100))
         keys.key = null
         val loaded = store.loadAll(Profile.A)
         assertEquals(0, loaded.takes.size)
         assertEquals(1, loaded.failed)
-        assertFailsWith<GeneralSecurityException> { store.loadTake(Profile.A, 1) }
+        assertTrue(loaded.keyLost)
+        assertFailsWith<BankKeyLostException> { store.loadTake(Profile.A, 1) }
+    }
+
+    @Test
+    fun noNewKeyIsCreatedOverExistingTakes() {
+        store.saveTake(Profile.A, 1, take(100))
+        keys.key = null
+        // Neither into the same profile nor into the other one.
+        assertFailsWith<BankKeyLostException> { store.saveTake(Profile.A, 2, take(100)) }
+        assertFailsWith<BankKeyLostException> { store.saveTake(Profile.B, 1, take(100)) }
+        assertEquals(1, keys.created, "a second key must not be generated silently")
+        assertEquals(listOf(1), store.takeNumbers(Profile.A))
+        assertEquals(emptyList(), store.takeNumbers(Profile.B))
+    }
+
+    @Test
+    fun keyThatCannotBeOpenedIsTreatedLikeALostKey() {
+        store.saveTake(Profile.A, 1, take(100))
+        keys.broken = true
+        assertTrue(store.loadAll(Profile.A).keyLost)
+        assertFailsWith<BankKeyLostException> { store.saveTake(Profile.A, 2, take(100)) }
+        assertFailsWith<BankKeyLostException> { store.loadTake(Profile.A, 1) }
+    }
+
+    @Test
+    fun deletingEverythingAllowsAFreshStartAfterKeyLoss() {
+        store.saveTake(Profile.A, 1, take(100))
+        keys.key = null
+        assertTrue(store.deleteAll())
+        store.saveTake(Profile.A, 1, take(100))
+        assertEquals(2, keys.created)
+        assertContentEquals(take(100), store.loadTake(Profile.A, 1))
+    }
+
+    @Test
+    fun hasAnyTakeLooksAtBothProfiles() {
+        assertFalse(store.hasAnyTake())
+        store.saveTake(Profile.B, 7, take(10))
+        assertTrue(store.hasAnyTake())
+        store.deleteProfile(Profile.B)
+        assertFalse(store.hasAnyTake())
     }
 
     @Test
     fun loadingAMissingTakeThrowsIOException() {
+        store.saveTake(Profile.A, 1, take(10))
         assertFailsWith<java.io.IOException> { store.loadTake(Profile.A, 9) }
     }
 

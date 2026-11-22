@@ -133,6 +133,81 @@ class LevelTest {
         assertNear(-30.0, Level.activeSpeechDbfs(signal), 0.3)
     }
 
+    private fun describe(errors: List<Double>): String {
+        val sorted = errors.sorted()
+        fun q(x: Double) = sorted[((sorted.size - 1) * x).toInt()]
+        return "n=%d min %+.2f, 5%% %+.2f, median %+.2f, 95%% %+.2f, max %+.2f dB".format(
+            sorted.size, sorted.first(), q(0.05), q(0.5), q(0.95), sorted.last(),
+        )
+    }
+
+    @Test
+    fun activeSpeechMatchesTheKnownSpeechLevelOverAmbientNoise() {
+        // Regression for an under-read of up to 6 dB: with ambient noise 10..16 dB below the speech
+        // the ambient frames used to be taken for speech. 300 randomised 8 s buffers, speech in
+        // 20..80% of each, stationary noise 10..30 dB below the speech level.
+        for (model in TestSignals.SpeechModel.values()) {
+            val errors = ArrayList<Double>()
+            val errorsAgainstSoundingOnly = ArrayList<Double>()
+            var lowestShare = 1.0
+            var highestShare = 0.0
+            var closestAmbient = 100.0
+            for (seed in 0L until 100L) {
+                val case = TestSignals.speechInNoise(seed, model)
+                val measured = Level.activeSpeechDbfs(case.samples)
+                val below = case.speechDbfs - case.ambientDbfs
+                val what = "$model seed $seed: speech ${case.speechDbfs} dBFS in ${case.speechShare} of the buffer, ambient $below dB below, measured $measured"
+                assertTrue(abs(measured - case.speechDbfs) <= 1.5, what)
+                assertTrue(abs(measured - case.soundingDbfs) <= 1.5, "$what, sounding-only level ${case.soundingDbfs}")
+                errors.add(measured - case.speechDbfs)
+                errorsAgainstSoundingOnly.add(measured - case.soundingDbfs)
+                lowestShare = minOf(lowestShare, case.speechShare)
+                highestShare = maxOf(highestShare, case.speechShare)
+                closestAmbient = minOf(closestAmbient, below)
+            }
+            // The cases really cover the range.
+            assertTrue(lowestShare < 0.25 && highestShare > 0.75 && closestAmbient < 10.5)
+            println("activeSpeechDbfs error, $model: ${describe(errors)}")
+            if (model == TestSignals.SpeechModel.SYLLABLES) {
+                println("activeSpeechDbfs error, $model, against the level of the syllables without the gaps between them: ${describe(errorsAgainstSoundingOnly)}")
+            }
+        }
+    }
+
+    @Test
+    fun activeSpeechIsNotDilutedByAmbientJustBelowTheSpeech() {
+        // The worst region of the old defect: ambient exactly 10, 12, 14 and 16 dB below the speech.
+        for (below in doubleArrayOf(10.0, 12.0, 14.0, 16.0)) {
+            val errors = ArrayList<Double>()
+            for (seed in 1000L until 1050L) {
+                val model = if (seed % 2 == 0L) TestSignals.SpeechModel.MODULATED_NOISE else TestSignals.SpeechModel.FLAT_TONE
+                val case = TestSignals.speechInNoise(seed, model, ambientBelowDb = below)
+                val measured = Level.activeSpeechDbfs(case.samples)
+                // Speech and noise sound together, so reading up to 0.41 dB high at 10 dB is physical.
+                assertTrue(measured - case.speechDbfs in -0.5..1.0, "ambient $below dB below, seed $seed: error ${measured - case.speechDbfs}")
+                // What the application derives from it: speech over ambient, for its 10 dB gate.
+                val ambient = Level.rmsDbfs(TestSignals.whiteNoise(2.0, case.ambientDbfs, seed))
+                assertTrue(abs((measured - ambient) - below) <= 1.0, "speech over ambient ${measured - ambient}, true $below")
+                errors.add(measured - case.speechDbfs)
+            }
+            println("activeSpeechDbfs error with ambient $below dB below speech: ${describe(errors)}")
+        }
+    }
+
+    @Test
+    fun activeSpeechCountsShortPausesButNotLongOnes() {
+        // 100 ms gaps between bursts belong to the speech (P.56 hangover of 200 ms), 400 ms gaps do not.
+        val burst = TestSignals.sine(300.0, 0.2, peakDbfs = -17.0)
+        fun train(gapSeconds: Double) = TestSignals.concat(
+            TestSignals.silence(1.0),
+            *Array(19) { if (it % 2 == 0) burst else TestSignals.silence(gapSeconds) },
+            TestSignals.silence(1.0),
+        )
+        // 10 bursts of 0.2 s and 9 gaps of 0.1 s: duty cycle 2.0 / 2.9.
+        assertNear(-20.0 + 10 * kotlin.math.log10(2.0 / 2.9), Level.activeSpeechDbfs(train(0.1)), 0.2)
+        assertNear(-20.0, Level.activeSpeechDbfs(train(0.4)), 0.2)
+    }
+
     @Test
     fun activeSpeechHonoursSampleRateAndShortInput() {
         val rate = 16000

@@ -16,6 +16,7 @@ import android.media.AudioManager
 import android.os.Build
 import android.os.IBinder
 import android.os.PowerManager
+import android.os.SystemClock
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
@@ -28,14 +29,18 @@ import io.github.victorkolesnyk.hamir.logic.BankLoadResult
 import io.github.victorkolesnyk.hamir.logic.BankLoader
 import io.github.victorkolesnyk.hamir.logic.CalibrationRecord
 import io.github.victorkolesnyk.hamir.logic.GainMode
+import io.github.victorkolesnyk.hamir.logic.Headline
 import io.github.victorkolesnyk.hamir.logic.MismatchDetector
 import io.github.victorkolesnyk.hamir.logic.PlanResult
+import io.github.victorkolesnyk.hamir.logic.PlaybackConditions
 import io.github.victorkolesnyk.hamir.logic.Profile
 import io.github.victorkolesnyk.hamir.logic.ProtectionPlan
 import io.github.victorkolesnyk.hamir.logic.ProtectionPlanner
 import io.github.victorkolesnyk.hamir.logic.ProtectionState
 import io.github.victorkolesnyk.hamir.logic.ProtectionStatus
 import io.github.victorkolesnyk.hamir.logic.ProtectionWarning
+import io.github.victorkolesnyk.hamir.logic.RouteGuard
+import io.github.victorkolesnyk.hamir.logic.SilenceAlarm
 import io.github.victorkolesnyk.hamir.logic.StopReason
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -62,6 +67,11 @@ class ProtectionService : Service() {
 
     /** Cancels the bank loading of the current start; replaced on every start. */
     private var loadCancel = AtomicBoolean(false)
+
+    /** Both are replaced on every start of playback. */
+    private var routeGuard = RouteGuard()
+    private var silenceAlarm = SilenceAlarm()
+    private var silentNotified = false
 
     private val noisyReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
@@ -132,6 +142,14 @@ class ProtectionService : Service() {
 
         active = true
         pendingManualGainDb = null
+        // Alerts of an earlier run would contradict the new one.
+        val manager = notificationManager()
+        manager.cancel(NOTIFICATION_ALERT)
+        manager.cancel(NOTIFICATION_SILENT)
+        manager.cancel(NOTIFICATION_GAP)
+        // Set already while loading: a process killed now must be noticed too. On a system restart
+        // the stored flag is what tells a real interruption from a stale restart, so leave it alone.
+        if (!restartedBySystem) writeActiveFlag(true)
         acquireWakeLock()
         registerNoisyReceiver()
         val cancel = AtomicBoolean(false)
@@ -199,6 +217,9 @@ class ProtectionService : Service() {
                 finish(finalFailure ?: StopReason.VOICE_UNREADABLE)
             } else {
                 startPlayback(readyGenerator, readyPlan, loadedCalibration)
+                // The process was killed while the noise played and the system brought the service back:
+                // the noise plays again, but the user must learn about the gap.
+                if (restartedBySystem && active) alertGap()
             }
         }
     }
@@ -213,51 +234,74 @@ class ProtectionService : Service() {
         }
         plan = newPlan
         calibration = record
-        val newPlayer = BabblePlayer(generator, newPlan.gainDb) {
-            // Playback thread: AudioTrack could not be created or died.
-            Deps.main.post { if (active) finish(StopReason.AUDIO_ERROR) }
-        }
+        routeGuard = RouteGuard()
+        silenceAlarm = SilenceAlarm()
+        silentNotified = false
+        val newPlayer = BabblePlayer(
+            generator, newPlan.gainDb,
+            onError = {
+                // Playback thread: AudioTrack could not be created or died.
+                Deps.main.post { if (active) finish(StopReason.AUDIO_ERROR) }
+            },
+            // Main thread: react to a re-route at once instead of waiting for the next poll.
+            onRoutingChanged = { if (active && player != null) checkPlayback() },
+        )
         player = newPlayer
         newPlayer.start()
-        writeActiveFlag(true)
-        val state = ProtectionState(
-            status = ProtectionStatus.RUNNING,
-            warnings = currentWarnings(newPlan, record, newPlayer),
-            mode = newPlan.mode,
-            gainDb = newPlan.gainDb,
-        )
-        publish(state)
+        publish(ProtectionState(status = ProtectionStatus.RUNNING, mode = newPlan.mode, gainDb = newPlan.gainDb))
+        checkPlayback()
         Deps.main.removeCallbacks(poll)
         Deps.main.postDelayed(poll, POLL_MS)
     }
 
     // ---------------------------------------------------------------- running
 
-    private fun currentWarnings(
-        activePlan: ProtectionPlan, record: CalibrationRecord?, activePlayer: BabblePlayer,
-    ): Set<ProtectionWarning> {
-        val audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
-        // A muted stream keeps its index, so treat it as volume zero.
-        val volume = if (audioManager.isStreamMute(AudioManager.STREAM_MUSIC)) {
-            0
-        } else {
-            audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
-        }
-        val route = AudioRoutes.current(audioManager, activePlayer.routedDeviceType())
-        return MismatchDetector.check(activePlan, record, volume, route)
-    }
-
-    /** Once per second: does playback still match what was calibrated? */
+    /**
+     * Once per second and on every routing callback: is the noise still coming out of the same
+     * device, is it audible, does it match the calibration?
+     */
     private fun checkPlayback() {
         val activePlan = plan ?: return
         val activePlayer = player ?: return
         val old = Deps.protectionState.value
         if (old.status != ProtectionStatus.RUNNING) return
-        val warnings = currentWarnings(activePlan, calibration, activePlayer)
-        if (warnings == old.warnings) return
-        val newMismatch = warnings.any { it in MismatchDetector.MISMATCH && it !in old.warnings }
-        publish(old.copy(warnings = warnings))
-        if (newMismatch) vibrate(longArrayOf(0, 200))
+        val now = SystemClock.elapsedRealtime()
+
+        val routed = activePlayer.routedDevice()
+        val verdict = routeGuard.observe(routed?.id, now)
+        if (verdict == RouteGuard.Verdict.LOST) {
+            // In every mode: the sound left the earbud that sits on the target microphone.
+            finish(StopReason.OUTPUT_CHANGED)
+            return
+        }
+
+        val audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
+        val conditions = PlaybackConditions(
+            volumeIndex = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC),
+            // A muted stream keeps its index.
+            streamMuted = audioManager.isStreamMute(AudioManager.STREAM_MUSIC),
+            // "Total silence" mutes media players without touching the stream volume.
+            totalSilence = notificationManager().currentInterruptionFilter ==
+                NotificationManager.INTERRUPTION_FILTER_NONE,
+            // No guessing: the route type is judged only once the system has reported a real device.
+            route = if (routeGuard.baselineKnown && routed != null) AudioRoutes.classify(routed.type) else null,
+            routeUnknownTooLong = verdict == RouteGuard.Verdict.PENDING_TOO_LONG,
+        )
+        val warnings = MismatchDetector.check(activePlan, calibration, conditions)
+        val route = conditions.route ?: old.route
+        if (warnings != old.warnings || route != old.route) {
+            val newMismatch = warnings.any { it in MismatchDetector.MISMATCH && it !in old.warnings }
+            publish(old.copy(warnings = warnings, route = route))
+            if (newMismatch) vibrate(longArrayOf(0, 200))
+        }
+
+        val silent = MismatchDetector.isSilent(warnings)
+        if (silenceAlarm.onObservation(silent, now)) {
+            alertSilent(warnings)
+        } else if (!silent && silentNotified) {
+            silentNotified = false
+            notificationManager().cancel(NOTIFICATION_SILENT)
+        }
     }
 
     private fun applyManualGain(gainDb: Double) {
@@ -297,13 +341,16 @@ class ProtectionService : Service() {
         player = null
         if (stoppedPlayer != null) {
             // Headphones gone: the sound would continue from the phone speaker, so cut it at once.
-            if (reason == StopReason.HEADSET_DISCONNECTED) stoppedPlayer.kill() else stoppedPlayer.stop()
+            val outputGone = reason == StopReason.HEADSET_DISCONNECTED || reason == StopReason.OUTPUT_CHANGED
+            if (outputGone) stoppedPlayer.kill() else stoppedPlayer.stop()
         }
         plan = null
         calibration = null
 
         Deps.protectionState.value = ProtectionState(ProtectionStatus.STOPPED, stopReason = reason)
         writeActiveFlag(false)
+        silentNotified = false
+        notificationManager().cancel(NOTIFICATION_SILENT)
         if (reason != StopReason.USER) alertStopped(reason)
 
         stopForeground(STOP_FOREGROUND_REMOVE)
@@ -411,16 +458,23 @@ class ProtectionService : Service() {
     }
 
     private fun buildOngoingNotification(state: ProtectionState?): Notification {
-        val running = state?.status == ProtectionStatus.RUNNING
+        val running = state != null && state.status == ProtectionStatus.RUNNING
         val warnings = state?.warnings ?: emptySet()
-        val title = getString(if (running) R.string.notif_running_title else R.string.notif_loading_title)
+        val title = if (state != null && state.status == ProtectionStatus.RUNNING) {
+            getString(headlineText(state.headline))
+        } else {
+            getString(R.string.notif_loading_title)
+        }
         val text = when {
             !running -> getString(R.string.notif_loading_text)
             ProtectionWarning.MUTED in warnings -> getString(R.string.warn_muted)
-            MismatchDetector.hasMismatch(warnings) -> getString(R.string.warn_mismatch)
-            ProtectionWarning.UNCALIBRATED in warnings -> getString(R.string.notif_manual_text)
+            ProtectionWarning.DND_SILENCE in warnings -> getString(R.string.warn_dnd)
+            ProtectionWarning.UNCALIBRATED in warnings -> getString(R.string.warn_uncalibrated)
+            ProtectionWarning.VOLUME_CHANGED in warnings -> getString(R.string.warn_volume_changed)
+            ProtectionWarning.ROUTE_CHANGED in warnings -> getString(R.string.warn_route_changed)
             ProtectionWarning.GAIN_CLAMPED in warnings -> getString(R.string.warn_gain_clamped)
             ProtectionWarning.DERIVED_GAIN in warnings -> getString(R.string.warn_derived_gain)
+            ProtectionWarning.ROUTE_UNKNOWN in warnings -> getString(R.string.warn_route_unknown)
             else -> getString(R.string.notif_running_text)
         }
         val stopIntent = PendingIntent.getService(
@@ -470,6 +524,52 @@ class ProtectionService : Service() {
         vibrate(ALERT_PATTERN)
     }
 
+    /**
+     * "NO SOUND": the noise plays into a muted stream. Posted again every ten seconds while that
+     * lasts, each time with the long vibration; removed as soon as the sound is back.
+     */
+    private fun alertSilent(warnings: Set<ProtectionWarning>) {
+        val text = getString(if (ProtectionWarning.MUTED in warnings) R.string.warn_muted else R.string.warn_dnd)
+        val notification = Notification.Builder(this, CHANNEL_ALERT)
+            .setSmallIcon(R.drawable.ic_stat_hamir)
+            .setContentTitle(getString(R.string.notif_silent_title))
+            .setContentText(text)
+            .setStyle(Notification.BigTextStyle().bigText(text))
+            .setContentIntent(mainScreenIntent())
+            .setOnlyAlertOnce(false)
+            .setCategory(Notification.CATEGORY_ALARM)
+            .setVisibility(Notification.VISIBILITY_PUBLIC)
+            .build()
+        try {
+            notificationManager().notify(NOTIFICATION_SILENT, notification)
+            silentNotified = true
+        } catch (e: RuntimeException) {
+            // The vibration below still signals the problem.
+        }
+        vibrate(ALERT_PATTERN)
+    }
+
+    /** One-off notice after the system restarted the service: there was a gap without noise. */
+    private fun alertGap() {
+        val text = getString(R.string.notif_gap_text)
+        val notification = Notification.Builder(this, CHANNEL_ALERT)
+            .setSmallIcon(R.drawable.ic_stat_hamir)
+            .setContentTitle(getString(R.string.notif_gap_title))
+            .setContentText(text)
+            .setStyle(Notification.BigTextStyle().bigText(text))
+            .setContentIntent(mainScreenIntent())
+            .setAutoCancel(true)
+            .setCategory(Notification.CATEGORY_ALARM)
+            .setVisibility(Notification.VISIBILITY_PUBLIC)
+            .build()
+        try {
+            notificationManager().notify(NOTIFICATION_GAP, notification)
+        } catch (e: RuntimeException) {
+            // The vibration below still signals the gap.
+        }
+        vibrate(ALERT_PATTERN)
+    }
+
     private fun vibrate(pattern: LongArray) {
         try {
             val vibrator: Vibrator? = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
@@ -501,16 +601,32 @@ class ProtectionService : Service() {
         private const val CHANNEL_ALERT = "protection_alert"
         private const val NOTIFICATION_ONGOING = 1
         const val NOTIFICATION_ALERT = 2
+        private const val NOTIFICATION_SILENT = 3
+        private const val NOTIFICATION_GAP = 4
         private const val POLL_MS = 1000L
         private val ALERT_PATTERN = longArrayOf(0, 600, 250, 600, 250, 600)
 
         fun stopReasonText(reason: StopReason): Int = when (reason) {
             StopReason.USER -> R.string.stop_user
             StopReason.HEADSET_DISCONNECTED -> R.string.stop_headset
+            StopReason.OUTPUT_CHANGED -> R.string.stop_output_changed
             StopReason.NOT_ENOUGH_VOICE -> R.string.stop_not_enough_voice
             StopReason.VOICE_UNREADABLE -> R.string.stop_voice_unreadable
             StopReason.AUDIO_ERROR -> R.string.stop_audio_error
             StopReason.INTERRUPTED -> R.string.stop_interrupted
+        }
+
+        /** Text of the one-line status, shared by the main screen and the notification title. */
+        fun headlineText(headline: Headline): Int = when (headline) {
+            Headline.OFF -> R.string.status_idle
+            Headline.LOADING -> R.string.status_loading
+            Headline.STOPPED_ALERT -> R.string.status_stopped_alert
+            Headline.SILENT -> R.string.status_silent
+            Headline.PLAYING_UNVERIFIED -> R.string.status_playing_unverified
+            Headline.PLAYING_MISMATCH -> R.string.status_playing_mismatch
+            Headline.PLAYING_LEVEL_NOT_REACHED -> R.string.status_playing_level_not_reached
+            Headline.PLAYING_DERIVED -> R.string.status_playing_derived
+            Headline.PLAYING_CALIBRATED -> R.string.status_playing_calibrated
         }
 
         /** Must be called while the activity is in the foreground (Android 12+ background-start rules). */

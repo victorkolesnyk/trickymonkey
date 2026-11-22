@@ -91,6 +91,7 @@ class CalibrateActivity : BaseActivity() {
     private fun onPrimary() {
         when (CalibrationController.state.value.step) {
             Step.INTRO -> if (ensureMicPermission()) CalibrationController.begin(this)
+            Step.AMBIENT_READY -> if (ensureMicPermission()) CalibrationController.startAmbient(this)
             Step.SPEECH_READY -> if (ensureMicPermission()) CalibrationController.startSpeech(this)
             Step.NOISE_READY -> if (ensureMicPermission()) CalibrationController.startNoise(this)
             Step.FAILED -> CalibrationController.retryNoise()
@@ -126,6 +127,12 @@ class CalibrateActivity : BaseActivity() {
                 }
                 secondary = R.string.action_cancel
             }
+            Step.AMBIENT_READY -> {
+                title = R.string.cal_title_ambient
+                body = getString(R.string.cal_ambient_ready_body)
+                primary = R.string.cal_btn_ambient
+                secondary = R.string.cal_btn_restart
+            }
             Step.AMBIENT -> {
                 title = R.string.cal_title_ambient
                 body = getString(R.string.cal_ambient_body)
@@ -136,7 +143,7 @@ class CalibrateActivity : BaseActivity() {
             Step.SPEECH_READY -> {
                 title = R.string.cal_title_speech
                 body = getString(R.string.cal_speech_ready_body) + "\n\n" +
-                    getString(R.string.cal_intro_target, state.targetSnrDb)
+                    getString(R.string.cal_target, formatDb(state.targetSnrDb))
                 state.rejectedMarginDb?.let { margin ->
                     detail = getString(R.string.cal_speech_retry, formatDb(maxOf(0.0, margin)))
                 }
@@ -180,7 +187,7 @@ class CalibrateActivity : BaseActivity() {
                 body = if (record == null) "" else getString(
                     R.string.cal_done_body,
                     formatDb(record.achievedSnrDb),
-                    record.targetSnrDb,
+                    formatDb(record.targetSnrDb),
                     formatDb(record.gainDb, signed = true),
                     record.musicVolumeIndex,
                     getString(MainActivity.routeText(record.route)),
@@ -193,6 +200,7 @@ class CalibrateActivity : BaseActivity() {
                 body = getString(
                     when (state.failure) {
                         CalibrationFailure.NEED_MORE_VOLUME -> R.string.cal_fail_need_more_volume
+                        CalibrationFailure.NEED_LESS_VOLUME -> R.string.cal_fail_need_less_volume
                         CalibrationFailure.MIC_CLIPPING -> R.string.cal_fail_mic_clipping
                         CalibrationFailure.NOISE_NOT_AUDIBLE -> R.string.cal_fail_not_audible
                         CalibrationFailure.NOT_CONVERGING, null -> R.string.cal_fail_not_converging
@@ -214,6 +222,7 @@ class CalibrateActivity : BaseActivity() {
                         Problem.VOICE_UNREADABLE -> R.string.cal_err_voice_unreadable
                         Problem.MIC -> R.string.cal_err_mic
                         Problem.PROTECTION_RUNNING -> R.string.cal_err_protection_running
+                        Problem.OUTPUT_CHANGED -> R.string.cal_err_output_changed
                         Problem.AUDIO, null -> R.string.cal_err_audio
                     }
                 )

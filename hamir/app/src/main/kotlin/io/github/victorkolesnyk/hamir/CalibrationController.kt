@@ -2,6 +2,7 @@ package io.github.victorkolesnyk.hamir
 
 import android.content.Context
 import android.media.AudioManager
+import android.os.SystemClock
 import io.github.victorkolesnyk.hamir.audio.AudioRoutes
 import io.github.victorkolesnyk.hamir.audio.BabblePlayer
 import io.github.victorkolesnyk.hamir.audio.MicSession
@@ -22,6 +23,7 @@ import io.github.victorkolesnyk.hamir.logic.PcmMath
 import io.github.victorkolesnyk.hamir.logic.PlanResult
 import io.github.victorkolesnyk.hamir.logic.Profile
 import io.github.victorkolesnyk.hamir.logic.ProtectionPlanner
+import io.github.victorkolesnyk.hamir.logic.RouteGuard
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
@@ -31,9 +33,11 @@ import java.util.concurrent.atomic.AtomicBoolean
  * Public methods and changes of [state] happen on the main thread; measuring runs on one worker thread.
  */
 object CalibrationController {
-    enum class Step { INTRO, LOADING, AMBIENT, SPEECH_READY, SPEECH, NOISE_READY, NOISE, DONE, FAILED, ERROR }
+    enum class Step {
+        INTRO, LOADING, AMBIENT_READY, AMBIENT, SPEECH_READY, SPEECH, NOISE_READY, NOISE, DONE, FAILED, ERROR,
+    }
 
-    enum class Problem { NOT_ENOUGH_VOICE, VOICE_UNREADABLE, MIC, AUDIO, PROTECTION_RUNNING }
+    enum class Problem { NOT_ENOUGH_VOICE, VOICE_UNREADABLE, MIC, AUDIO, PROTECTION_RUNNING, OUTPUT_CHANGED }
 
     data class State(
         val step: Step = Step.INTRO,
@@ -85,7 +89,9 @@ object CalibrationController {
 
     private class Cancelled : Exception()
 
-    /** Step 1: load the voice bank, then measure silence. */
+    private class OutputChanged : Exception()
+
+    /** Preparation: decrypt the voice bank. Its duration is unpredictable, so nothing is measured yet. */
     fun begin(context: Context) {
         if (state.value.measuring) return
         if (Deps.protectionState.value.active) {
@@ -121,12 +127,25 @@ object CalibrationController {
                     is BankLoadResult.Ready -> generator = loaded.generator
                 }
                 val target = settings.targetSnrDb
-                val newSession = CalibrationSession(target.toDouble())
-                job.post { State(step = Step.AMBIENT, targetSnrDb = target) }
+                session = CalibrationSession(target.toDouble())
+                job.post { State(step = Step.AMBIENT_READY, targetSnrDb = target) }
+            }
+        }
+    }
+
+    /** Step 1: two seconds of silence, started by the user when the room is quiet. */
+    fun startAmbient(context: Context) {
+        val current = state.value
+        if (current.step != Step.AMBIENT_READY) return
+        val app = context.applicationContext
+        val job = newJob()
+        state.value = current.copy(step = Step.AMBIENT, progress = 0)
+        worker.execute {
+            runGuarded(job) {
+                val activeSession = session ?: throw IllegalStateException("no session")
                 val samples = recordFixed(app, job, AMBIENT_MS)
-                newSession.submitAmbient(Level.rmsDbfs(samples.pcm))
-                session = newSession
-                job.post { State(step = Step.SPEECH_READY, targetSnrDb = target) }
+                activeSession.submitAmbient(Level.rmsDbfs(samples.pcm))
+                job.update { it.copy(step = Step.SPEECH_READY, progress = 0) }
             }
         }
     }
@@ -243,6 +262,8 @@ object CalibrationController {
             // reset() already put the wizard back to the introduction.
         } catch (e: MicUnavailableException) {
             job.post { State(step = Step.ERROR, problem = Problem.MIC) }
+        } catch (e: OutputChanged) {
+            job.post { State(step = Step.ERROR, problem = Problem.OUTPUT_CHANGED) }
         } catch (e: Throwable) {
             job.post { State(step = Step.ERROR, problem = Problem.AUDIO) }
         } finally {
@@ -256,7 +277,7 @@ object CalibrationController {
     private fun recordFixed(app: Context, job: Job, durationMs: Int): Recording {
         var mic: MicSession? = null
         try {
-            mic = MicSession.open(app)
+            mic = MicSession.open(app, MicSession.Purpose.CALIBRATION)
             skip(mic, job, MIC_WARMUP_MS)
             val pcm = collect(mic, job, durationMs) { percent -> job.update { it.copy(progress = percent) } }
             return Recording(pcm, mic.sampleRate)
@@ -285,7 +306,7 @@ object CalibrationController {
             val n = mic.read(chunk, 0, minOf(chunk.size, total - buffer.size))
             if (n <= 0) continue
             buffer.append(chunk, 0, n)
-            job.level(PcmMath.meterPercent(Level.peakDbfs(chunk, 0, n)))
+            job.level(PcmMath.meterPercent(Level.peakDbfs(chunk, 0, n), mic.meterFloorDbfs))
             val percent = (buffer.size * 100L / total).toInt()
             if (percent / 5 != lastPercent / 5) {
                 lastPercent = percent
@@ -302,10 +323,12 @@ object CalibrationController {
         val audioManager = app.getSystemService(Context.AUDIO_SERVICE) as AudioManager
 
         val playerError = AtomicBoolean(false)
-        val player = BabblePlayer(activeGenerator, phase.gainDb) { playerError.set(true) }
+        val player = BabblePlayer(activeGenerator, phase.gainDb, onError = { playerError.set(true) })
+        // Same rule as in the service: if the sound moves to another device mid-run, the result is void.
+        val routeGuard = RouteGuard()
         var mic: MicSession? = null
         try {
-            mic = MicSession.open(app)
+            mic = MicSession.open(app, MicSession.Purpose.CALIBRATION)
             player.start()
             var previousGain = phase.gainDb
             // Start-up counts as a full change of level: fade-in plus an empty track buffer.
@@ -328,13 +351,17 @@ object CalibrationController {
                 skip(mic, job, settle)
                 val pcm = collect(mic, job, NOISE_MEASURE_MS) { percent -> job.update { it.copy(progress = percent) } }
                 if (playerError.get()) throw IllegalStateException("playback failed")
+                val verdict = routeGuard.observe(player.routedDevice()?.id, SystemClock.elapsedRealtime())
+                if (verdict == RouteGuard.Verdict.LOST) throw OutputChanged()
 
                 val measured = Level.rmsDbfs(pcm)
                 val peak = Level.peakDbfs(pcm)
                 when (val next = activeSession.submitNoise(measured, peak)) {
                     is CalibrationPhase.Noise -> phase = next
                     is CalibrationPhase.Done -> {
-                        val route = AudioRoutes.current(audioManager, player.routedDeviceType()) ?: OutputRoute.OTHER
+                        val route = player.routedDevice()?.let { AudioRoutes.classify(it.type) }
+                            ?: AudioRoutes.guess(audioManager)
+                            ?: OutputRoute.OTHER
                         val record = CalibrationRecord(
                             gainDb = next.outcome.gainDb,
                             targetSnrDb = activeSession.targetSnrDb.toInt(),

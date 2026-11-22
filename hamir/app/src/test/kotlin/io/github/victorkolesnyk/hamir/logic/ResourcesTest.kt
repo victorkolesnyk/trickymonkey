@@ -115,6 +115,44 @@ class ResourcesTest {
     }
 
     @Test
+    fun runningStatusNeverClaimsMoreThanWasMeasured() {
+        val text = read("res/values/strings.xml")
+        fun value(name: String) =
+            Regex("<string name=\"$name\">(.*?)</string>", RegexOption.DOT_MATCHES_ALL).find(text)!!.groupValues[1]
+        // Neutral wording for everything that plays; "protection is on" is not used as a running status.
+        for (name in listOf(
+            "status_playing_calibrated", "status_playing_unverified", "status_playing_derived",
+            "status_playing_mismatch", "status_playing_level_not_reached",
+        )) {
+            assertTrue(value(name).startsWith("Шум грає"), name)
+        }
+        assertTrue("не перевірено" in value("status_playing_unverified"))
+        assertEquals("Шуму не чути", value("status_silent"))
+        assertFalse(text.contains("Захист увімкнено"), "a running state must not be titled \"protection is on\"")
+        // Losing the output means "no protection", not "you can be heard from now on".
+        for (name in listOf("stop_headset", "stop_output_changed")) {
+            assertTrue("захисту немає" in value(name), name)
+            assertFalse("вас чути" in value(name), name)
+        }
+        assertTrue("Не турбувати" in value("guide_placement") && "Не турбувати" in value("guide_airplane"))
+        assertTrue("перемкнеться на інший пристрій" in value("guide_placement"))
+        assertFalse("мікрофон вимкнено" in text)
+    }
+
+    @Test
+    fun agreedSpellingIsUsed() {
+        val text = read("res/values/strings.xml") + read("res/values/phrases.xml")
+        for (wrong in listOf("телефона", "міні-динамік", "як звичайно", "отвором звуку", "вимір тиші", " з самого ранку")) {
+            assertFalse(text.contains(wrong), "found \"$wrong\"")
+        }
+        // Whole decibel values go in preformatted, so the minus sign is U+2212 and not an ASCII hyphen.
+        for (name in listOf("cal_summary", "cal_target", "cal_done_body")) {
+            val value = Regex("<string name=\"$name\">(.*?)</string>", RegexOption.DOT_MATCHES_ALL).find(text)!!.groupValues[1]
+            assertFalse(value.contains("ціль: %2\$d") || value.contains("ціль: %3\$d") || value.contains("SNR %1\$d"), name)
+        }
+    }
+
+    @Test
     fun manifestRequestsExactlyTheSpecifiedPermissionsAndNoInternet() {
         val manifest = read("AndroidManifest.xml").replace(Regex("<!--.*?-->", RegexOption.DOT_MATCHES_ALL), "")
         val requested = Regex("<uses-permission\\s+android:name=\"android\\.permission\\.([A-Z_]+)\"")
@@ -131,6 +169,7 @@ class ResourcesTest {
         assertTrue(manifest.contains("android:dataExtractionRules=\"@xml/data_extraction_rules\""))
         assertTrue(manifest.contains("android:fullBackupContent=\"@xml/backup_rules\""))
         assertTrue(manifest.contains("android:foregroundServiceType=\"mediaPlayback\""))
+        assertTrue(manifest.contains("android:allowAudioPlaybackCapture=\"false\""))
     }
 
     @Test

@@ -16,7 +16,20 @@
 
     <Button
         android:id="@+id/permission_button"
-        style="@style/HamirButton"
+        style="@style/HamirButtonPrimary"
         android:layout_marginTop="8dp"
         android:text="@string/action_grant" />
+
+    <TextView
+        android:id="@+id/permission_settings_hint"
+        style="@style/HamirNote"
+        android:layout_marginTop="8dp"
+        android:text="@string/perm_mic_settings_hint"
+        android:visibility="gone" />
+
+    <Button
+        android:id="@+id/permission_settings_button"
+        style="@style/HamirButton"
+        android:text="@string/action_open_settings"
+        android:visibility="gone" />
 </LinearLayout>

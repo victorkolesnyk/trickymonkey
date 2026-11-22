@@ -2,7 +2,10 @@ package io.github.victorkolesnyk.hamir.audio
 
 import android.media.AudioAttributes
 import android.media.AudioFormat
+import android.media.AudioRouting
 import android.media.AudioTrack
+import android.os.Handler
+import android.os.Looper
 import android.os.Process
 import io.github.victorkolesnyk.hamir.core.BabbleGenerator
 import io.github.victorkolesnyk.hamir.core.Gain
@@ -22,7 +25,11 @@ class BabblePlayer(
     initialGainDb: Double,
     /** Called on the playback thread when playback dies for any reason other than [stop] or [kill]. */
     private val onError: (Throwable) -> Unit,
+    /** Called on the main thread whenever the system reports a routing change of the track. */
+    private val onRoutingChanged: (() -> Unit)? = null,
 ) {
+    private val routingListener = AudioRouting.OnRoutingChangedListener { onRoutingChanged?.invoke() }
+
     /** Target gain; the playback thread approaches it by at most [MAX_GAIN_STEP_DB] per 20 ms chunk. */
     @Volatile
     var gainDb: Double = initialGainDb
@@ -77,9 +84,12 @@ class BabblePlayer(
         }
     }
 
-    /** AudioDeviceInfo type of the device the track is routed to, or null when unknown. */
-    fun routedDeviceType(): Int? = try {
-        track?.routedDevice?.type
+    /** Device the track is routed to right now. */
+    class Routed(val id: Int, val type: Int)
+
+    /** Id and type of the device the track is routed to, or null while the system reports none. */
+    fun routedDevice(): Routed? = try {
+        track?.routedDevice?.let { Routed(it.id, it.type) }
     } catch (e: RuntimeException) {
         null
     }
@@ -111,7 +121,7 @@ class BabblePlayer(
                     track = null
                     val dead = audioTrack
                     audioTrack = null
-                    dead.release()
+                    closeTrack(dead)
                     audioTrack = openTrack()
                     chunksSinceRestart = 0
                     continue
@@ -134,11 +144,7 @@ class BabblePlayer(
             if (!killed && !stopRequested) onError(e)
         } finally {
             track = null
-            try {
-                audioTrack?.release()
-            } catch (e: RuntimeException) {
-                // Nothing left to clean up.
-            }
+            audioTrack?.let { closeTrack(it) }
         }
     }
 
@@ -146,6 +152,10 @@ class BabblePlayer(
         val audioTrack = createTrack()
         try {
             bufferFrames = audioTrack.bufferSizeInFrames
+            if (onRoutingChanged != null) {
+                // API 24. The callback runs on the main thread, where the service evaluates the route.
+                audioTrack.addOnRoutingChangedListener(routingListener, Handler(Looper.getMainLooper()))
+            }
             audioTrack.play()
         } catch (e: RuntimeException) {
             audioTrack.release()
@@ -153,6 +163,19 @@ class BabblePlayer(
         }
         track = audioTrack
         return audioTrack
+    }
+
+    private fun closeTrack(audioTrack: AudioTrack) {
+        try {
+            if (onRoutingChanged != null) audioTrack.removeOnRoutingChangedListener(routingListener)
+        } catch (e: RuntimeException) {
+            // The listener was never attached.
+        }
+        try {
+            audioTrack.release()
+        } catch (e: RuntimeException) {
+            // Nothing left to clean up.
+        }
     }
 
     /** Writes the whole chunk. Returns false when the track died and has to be recreated. */

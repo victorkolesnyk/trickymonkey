@@ -59,6 +59,57 @@ class VoiceBankTest {
     }
 
     @Test
+    fun roomNoiseAroundTheSpeechIsTrimmedEvenWhenItIsOnlyTenDbQuieter() {
+        // Regression: with ambient noise 10..15 dB below the speech nothing used to be trimmed,
+        // so the bank (and with it the babble) consisted partly of amplified room noise.
+        val clean = List(12) { TestSignals.utterance(1200L + it, floorDbfs = -120.0) }
+        val total = clean.sumOf { it.samples.size } / SAMPLE_RATE.toDouble()
+        val edges = clean.sumOf { it.leadSeconds + it.tailSeconds }
+        val reference = VoiceBank.fromUtterances(clean.map { it.samples })
+        for (below in doubleArrayOf(10.0, 12.0, 15.0, 20.0, 30.0)) {
+            val noisy = clean.mapIndexed { i, u ->
+                TestSignals.withNoise(u.samples, Level.activeSpeechDbfs(u.samples) - below, seed = 50L + i)
+            }
+            val bank = VoiceBank.fromUtterances(noisy)
+            println(
+                "VoiceBank, ambient %.0f dB below speech: %.1f s raw -> %.1f s kept (%.1f s with silent pauses, %.1f s of edge noise in the raw takes)".format(
+                    below, total, bank.speechSeconds, reference.speechSeconds, edges,
+                ),
+            )
+            assertTrue(bank.speechSeconds <= total - 0.9 * edges, "ambient $below dB below: kept ${bank.speechSeconds} s of $total s")
+            assertTrue(
+                abs(bank.speechSeconds - reference.speechSeconds) <= 0.1 * reference.speechSeconds,
+                "ambient $below dB below: kept ${bank.speechSeconds} s, ${reference.speechSeconds} s without noise",
+            )
+            // Every single take lost its lead-in and lead-out.
+            for (i in clean.indices) {
+                val single = VoiceBank.fromUtterances(listOf(noisy[i]))
+                val raw = clean[i].samples.size / SAMPLE_RATE.toDouble()
+                val edge = clean[i].leadSeconds + clean[i].tailSeconds
+                assertTrue(single.speechSeconds <= raw - 0.9 * edge, "take $i, ambient $below dB below: kept ${single.speechSeconds} s of $raw s")
+                assertTrue(single.speechSeconds >= clean[i].voicedSeconds, "take $i: kept ${single.speechSeconds} s, voiced ${clean[i].voicedSeconds} s")
+            }
+        }
+    }
+
+    @Test
+    fun steadySoundsAreKeptWhole() {
+        // No pauses at all: nothing may be taken for a pause. (A noise-floor rule without a gate
+        // would cut away the marginally quieter frames of a plain tone.)
+        val tone = VoiceBank.fromUtterances(listOf(TestSignals.sine(300.0, 4.0, peakDbfs = -10.0)))
+        assertEquals(4.0, tone.speechSeconds, 0.011)
+        val noise = VoiceBank.fromUtterances(listOf(TestSignals.whiteNoise(4.0, rmsDbfs = -30.0, seed = 6)))
+        assertEquals(4.0, noise.speechSeconds, 0.011)
+        val babble = TestSignals.generate(BabbleGenerator(listOf(TestSignals.bankA), BabbleConfig(), java.util.Random(2)), 6.0)
+        assertEquals(6.0, VoiceBank.fromUtterances(listOf(babble)).speechSeconds, 0.011)
+        // And the level of such signals is simply their RMS.
+        assertTrue(abs(Level.activeSpeechDbfs(babble) - Level.rmsDbfs(babble)) < 0.1)
+        val powers = SpeechActivity.framePowers(TestSignals.whiteNoise(8.0, rmsDbfs = -40.0, seed = 7), SAMPLE_RATE)
+        val activity = SpeechActivity.analyse(powers)
+        assertEquals(powers.size, powers.count { activity.isActive(it) })
+    }
+
+    @Test
     fun explicitLongPauseIsCutOut() {
         val first = TestSignals.sine(220.0, 1.0, peakDbfs = -12.0)
         val second = TestSignals.sine(330.0, 1.0, peakDbfs = -12.0)

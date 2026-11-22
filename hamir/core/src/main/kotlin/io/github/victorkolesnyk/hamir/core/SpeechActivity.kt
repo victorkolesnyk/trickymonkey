@@ -18,15 +18,20 @@ internal object SpeechActivity {
     private const val MARGIN = 38.9
 
     /**
-     * Noise-floor rule: a speech frame must also stand above the quiet frames of the buffer (their
-     * 10th percentile) by the smaller of 6 dB and half the distance, in dB, between that floor and
-     * the loud frames (the mean of the loudest [LOUD_SHARE]).
+     * Noise-floor rule. When the loud frames of the buffer (the mean of the loudest [LOUD_SHARE])
+     * stand at least [FLOOR_GATE] (8 dB) above its quiet frames (their 10th percentile), the buffer
+     * has a noise floor, and a speech frame must rise above that floor by half the distance
+     * between the two in dB, but by no more than [MAX_ABOVE_FLOOR] (6 dB). So the margin is 4 dB
+     * at the gate and 6 dB from a distance of 12 dB on. Below the gate the signal is taken as
+     * steady and the rule stays out of the way, otherwise it would discard the quieter half of
+     * the frames of a plain tone or of noise.
      *
      * Both reference points come straight from the sorted frame powers. They must not be derived
      * from the level of the frames accepted so far: with ambient noise 10..16 dB below the speech
      * the P.56 margin alone accepts the ambient frames too, that level is then diluted by them,
      * and a rule tied to it switches itself off exactly when it is needed.
      */
+    private const val FLOOR_GATE = 6.31
     private const val MAX_ABOVE_FLOOR = 4.0
     private const val FLOOR_PERCENTILE = 0.10
     private const val LOUD_SHARE = 0.15
@@ -83,7 +88,7 @@ internal object SpeechActivity {
      * while each one is within [MARGIN] of the mean of those already accepted; the first frame that
      * falls out marks the threshold. This follows the level of the speech whether it fills the
      * whole buffer or a small part of it, and decides when the pauses are (nearly) silent.
-     * (2) Noise floor, see [MAX_ABOVE_FLOOR]: decides when the pauses hold ambient noise that is
+     * (2) Noise floor, see [FLOOR_GATE]: decides when the pauses hold ambient noise that is
      * less than the margin below the speech.
      */
     fun analyse(powers: DoubleArray, frameMs: Int = FRAME_MS): Activity {
@@ -119,7 +124,9 @@ internal object SpeechActivity {
             var loud = 0.0
             for (i in top - loudFrames + 1..top) loud += sorted[i]
             loud /= loudFrames
-            threshold = max(threshold, floor * min(MAX_ABOVE_FLOOR, sqrt(loud / floor)))
+            if (loud >= FLOOR_GATE * floor) {
+                threshold = max(threshold, floor * min(MAX_ABOVE_FLOOR, sqrt(loud / floor)))
+            }
         }
         return Activity(threshold, ceiling)
     }

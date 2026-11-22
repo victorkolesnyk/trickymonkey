@@ -10,6 +10,7 @@ import io.github.victorkolesnyk.hamir.core.SAMPLE_RATE
 import io.github.victorkolesnyk.hamir.core.TakeCheck
 import io.github.victorkolesnyk.hamir.core.TakeQuality
 import io.github.victorkolesnyk.hamir.data.Deps
+import io.github.victorkolesnyk.hamir.logic.BankKeyLostException
 import io.github.victorkolesnyk.hamir.logic.EnrollmentRules
 import io.github.victorkolesnyk.hamir.logic.Observable
 import io.github.victorkolesnyk.hamir.logic.PcmBuffer
@@ -29,7 +30,7 @@ object EnrollController {
     enum class Busy { IDLE, RECORDING, SAVING, PLAYING, DELETING }
 
     enum class Notice {
-        NONE, ACCEPTED, TOO_SHORT, TOO_QUIET, CLIPPED, MIC_ERROR, SAVE_ERROR, PLAY_ERROR,
+        NONE, ACCEPTED, TOO_SHORT, TOO_QUIET, CLIPPED, MIC_ERROR, SAVE_ERROR, PLAY_ERROR, KEY_LOST,
         PROFILE_DELETED, ALL_DELETED, DELETE_ERROR, PROTECTION_RUNNING,
     }
 
@@ -136,8 +137,9 @@ object EnrollController {
         var notice = Notice.NONE
         var accepted: ShortArray? = null
         try {
-            mic = MicSession.open(app)
+            mic = MicSession.open(app, MicSession.Purpose.ENROLLMENT)
             val rate = mic.sampleRate
+            val meterFloor = mic.meterFloorDbfs
             val buffer = PcmBuffer(EnrollmentRules.MAX_TAKE_SECONDS * rate)
             val chunk = ShortArray(rate / 20)
             var lastTick = 0
@@ -146,7 +148,7 @@ object EnrollController {
                 val n = mic.read(chunk, 0, chunk.size)
                 if (n <= 0) continue
                 buffer.append(chunk, 0, n)
-                val percent = PcmMath.meterPercent(Level.peakDbfs(chunk, 0, n))
+                val percent = PcmMath.meterPercent(Level.peakDbfs(chunk, 0, n), meterFloor)
                 val elapsed = (buffer.size * 1000L / rate).toInt()
                 val tick = elapsed / 250
                 val publishElapsed = tick != lastTick
@@ -180,6 +182,10 @@ object EnrollController {
             }
         } catch (e: MicUnavailableException) {
             notice = Notice.MIC_ERROR
+        } catch (e: BankKeyLostException) {
+            // Old takes exist but their key is gone: recording on top would mix unreadable data in.
+            notice = Notice.KEY_LOST
+            accepted = null
         } catch (e: Throwable) {
             // Disk, keystore or memory trouble: the take is not counted.
             notice = Notice.SAVE_ERROR
@@ -213,17 +219,20 @@ object EnrollController {
         val cached = lastTake?.takeIf { it.first == profile && it.second == phrase }?.third
         state.value = current.copy(busy = Busy.PLAYING, notice = Notice.NONE)
         Thread({
-            var failed = false
+            var problem: Notice? = null
             try {
                 val pcm = cached ?: Deps.bank(app).loadTake(profile, phrase)
                 TakePlayer.play(pcm, stop)
+            } catch (e: BankKeyLostException) {
+                problem = Notice.KEY_LOST
             } catch (e: Throwable) {
-                failed = true
+                problem = Notice.PLAY_ERROR
             }
+            val result = problem
             Deps.main.post {
                 if (stopFlag === stop) stopFlag = null
                 val now = state.value
-                state.value = now.copy(busy = Busy.IDLE, notice = if (failed) Notice.PLAY_ERROR else now.notice)
+                state.value = now.copy(busy = Busy.IDLE, notice = result ?: now.notice)
             }
         }, "hamir-enroll-play").start()
     }
@@ -254,6 +263,10 @@ object EnrollController {
         val app = context.applicationContext
         val profile = current.profile
         lastTake = null
+        // Nothing may keep playing or holding the voice that is being deleted: stop the noise and
+        // drop the decrypted bank of a calibration in progress. The confirmation dialog says so.
+        if (Deps.protectionState.value.active) ProtectionService.stop(app)
+        CalibrationController.reset()
         state.value = current.copy(busy = Busy.DELETING, notice = Notice.NONE)
         Deps.io.execute {
             val ok = try {

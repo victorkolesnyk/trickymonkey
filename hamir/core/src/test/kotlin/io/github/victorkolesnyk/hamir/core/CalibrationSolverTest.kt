@@ -204,11 +204,96 @@ class CalibrationSolverTest {
     }
 
     @Test
-    fun tooLoudAtMinimumGainCannotConverge() {
+    fun tooLoudAtMinimumGainNeedsLessVolume() {
         // Media volume far too high: even -40 dB of digital gain leaves the noise 10 dB too loud.
         val s = solver()
         assertEquals(CalibrationStep.Adjust(-40.0), s.next(-35.0, -10.0, -3.0))
-        assertEquals(fail(CalibrationFailure.NOT_CONVERGING), s.next(-40.0, -15.0, -5.0))
+        assertEquals(fail(CalibrationFailure.NEED_LESS_VOLUME), s.next(-40.0, -15.0, -5.0))
+        // Started at the minimum: fails on the first measurement.
+        assertEquals(fail(CalibrationFailure.NEED_LESS_VOLUME), solver().next(-40.0, -23.9, -12.0))
+        // Within tolerance at the minimum is a success, not a failure.
+        assertEquals(CalibrationStep.Done(-40.0, -6.0), solver().next(-40.0, -24.0, -12.0))
+        // Too quiet at the minimum is an ordinary adjustment.
+        assertEquals(CalibrationStep.Adjust(-30.0), solver().next(-40.0, -35.0, -22.0))
+        // Whole run on a chain that is 15 dB too hot for a quiet talker (target -45 dBFS).
+        val hot = solver(speechDbfs = -50.0, ambientDbfs = -80.0)
+        var gain = -20.0
+        var result: CalibrationStep
+        var count = 0
+        do {
+            result = hot.next(gain, gain + 10.0, gain + 18.0)
+            count++
+            if (result is CalibrationStep.Adjust) gain = result.gainDb
+        } while (result is CalibrationStep.Adjust)
+        assertEquals(fail(CalibrationFailure.NEED_LESS_VOLUME), result)
+        assertEquals(2, count)
+    }
+
+    @Test
+    fun needLessVolumeIsAppendedToTheEnum() {
+        // The application stores and switches on these constants: the first four keep their positions.
+        assertEquals(
+            listOf("NEED_MORE_VOLUME", "MIC_CLIPPING", "NOISE_NOT_AUDIBLE", "NOT_CONVERGING", "NEED_LESS_VOLUME"),
+            CalibrationFailure.values().map { it.name },
+        )
+    }
+
+    @Test
+    fun gainOutsideTheRangeIsNeverAccepted() {
+        // On target, but the caller played at a gain the solver would never hand out.
+        assertEquals(CalibrationStep.Adjust(12.0), solver().next(20.0, -25.0, -12.0))
+        assertEquals(CalibrationStep.Adjust(-40.0), solver().next(-55.0, -25.0, -12.0))
+        // Off target as well: still pulled back into the range first, whatever the measurement says.
+        assertEquals(CalibrationStep.Adjust(12.0), solver().next(12.5, -40.0, -30.0))
+        assertEquals(CalibrationStep.Adjust(-40.0), solver().next(-41.0, -10.0, -0.5))
+        // It counts as a measurement, so a caller that ignores the answer cannot loop for ever.
+        val s = solver(maxIterations = 3)
+        assertEquals(CalibrationStep.Adjust(12.0), s.next(30.0, -25.0, -12.0))
+        assertEquals(CalibrationStep.Adjust(12.0), s.next(30.0, -25.0, -12.0))
+        assertEquals(fail(CalibrationFailure.NOT_CONVERGING), s.next(30.0, -25.0, -12.0))
+        // Random probing: a Done always carries a gain inside the range.
+        val random = java.util.Random(5)
+        var done = 0
+        repeat(20000) {
+            val solver = CalibrationSolver(
+                targetSnrDb = -5.0 + 10.0 * random.nextDouble(),
+                speechDbfs = -60.0 + 40.0 * random.nextDouble(),
+                ambientDbfs = -90.0 + 40.0 * random.nextDouble(),
+            )
+            val gain = -60.0 + 90.0 * random.nextDouble()
+            val measured = solver.targetNoiseDbfs + 4.0 * random.nextGaussian()
+            val step = solver.next(gain, measured, measured + 10.0)
+            if (step is CalibrationStep.Done) {
+                done++
+                assertTrue(step.gainDb in solver.minGainDb..solver.maxGainDb, "Done with gain ${step.gainDb}")
+                assertEquals(gain, step.gainDb)
+                assertTrue(measured >= solver.ambientDbfs + CalibrationSolver.AUDIBLE_MARGIN_DB, "Done on an inaudible noise")
+                assertTrue(abs(measured - solver.targetNoiseDbfs) <= solver.toleranceDb)
+            }
+        }
+        assertTrue(done > 1000, "$done successful probes")
+    }
+
+    @Test
+    fun ambientAloneIsNeverAcceptedAsTheNoise() {
+        // Reviewer's case: target -48 dBFS, ambient -50. The reading of -48.2 is within tolerance of
+        // the target, but it is only 1.8 dB above ambient: nothing shows that the noise is playing.
+        val s = CalibrationSolver(0.0, -48.0, -50.0)
+        val step = s.next(-40.0, -48.2, -30.0)
+        assertIs<CalibrationStep.Adjust>(step)
+        // The solver now aims at the lowest level that is both audible and within tolerance: -47.
+        assertEquals(-38.8, step.gainDb, 1e-9)
+        val done = s.next(-38.8, -47.0, -30.0)
+        assertIs<CalibrationStep.Done>(done)
+        assertEquals(-1.0, done.achievedSnrDb, 1e-9)
+
+        // Target so close to ambient that it cannot be verified at all.
+        assertEquals(fail(CalibrationFailure.NOISE_NOT_AUDIBLE), CalibrationSolver(0.0, -49.0, -50.0).next(-40.0, -48.8, -30.0))
+        assertEquals(fail(CalibrationFailure.NOISE_NOT_AUDIBLE), CalibrationSolver(5.0, -45.0, -50.0).next(0.0, -30.0, -20.0))
+        // Exactly at the audibility margin and on target: accepted.
+        assertEquals(CalibrationStep.Done(-10.0, 0.0), CalibrationSolver(0.0, -47.0, -50.0).next(-10.0, -47.0, -30.0))
+        // With the gate the application uses (speech 10 dB above ambient) nothing changes.
+        assertEquals(CalibrationStep.Done(-10.0, 0.0), CalibrationSolver(0.0, -40.0, -50.0).next(-10.0, -40.0, -30.0))
     }
 
     @Test

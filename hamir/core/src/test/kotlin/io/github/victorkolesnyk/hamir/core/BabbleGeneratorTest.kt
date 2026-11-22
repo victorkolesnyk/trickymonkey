@@ -131,6 +131,12 @@ class BabbleGeneratorTest {
         val bad = listOf(
             BabbleConfig(voices = 0),
             BabbleConfig(minSegmentMs = 0),
+            BabbleConfig(minSegmentMs = 49, maxSegmentMs = 2000),
+            BabbleConfig(minSegmentMs = 5, maxSegmentMs = 5),
+            BabbleConfig(maxSegmentMs = 60_001),
+            BabbleConfig(targetRmsDbfs = -9.99),
+            BabbleConfig(targetRmsDbfs = 0.0),
+            BabbleConfig(targetRmsDbfs = Double.POSITIVE_INFINITY),
             BabbleConfig(minSegmentMs = 500, maxSegmentMs = 400),
             BabbleConfig(speedJitter = -0.1),
             BabbleConfig(speedJitter = 0.9),
@@ -140,13 +146,28 @@ class BabbleGeneratorTest {
         for (config in bad) {
             assertFailsWith<IllegalArgumentException>(config.toString()) { BabbleGenerator(listOf(bankA), config, Random(1)) }
         }
+        // The limits themselves are accepted.
+        val edge = BabbleConfig(minSegmentMs = BabbleGenerator.MIN_SEGMENT_MS, targetRmsDbfs = BabbleGenerator.MAX_TARGET_RMS_DBFS)
+        assertEquals(50, edge.minSegmentMs)
+        assertEquals(-10.0, edge.targetRmsDbfs)
+        BabbleGenerator(listOf(bankA), edge, Random(1))
+    }
+
+    @Test
+    fun shortestAndLoudestAcceptedSettingsStillMeetTheLevelContract() {
+        // The two limits exist because beyond them the contract breaks (5 ms units came out at
+        // -27 dBFS, a 0 dBFS target at -3.8): check that it holds right at them.
+        val shortUnits = BabbleConfig(minSegmentMs = 50, maxSegmentMs = 50)
+        assertLevels(TestSignals.generate(BabbleGenerator(listOf(bankA), shortUnits, Random(41)), 60.0), -20.0, "50 ms units")
+        val loud = BabbleConfig(targetRmsDbfs = -10.0)
+        assertLevels(TestSignals.generate(BabbleGenerator(listOf(bankA), loud, Random(42)), 60.0), -10.0, "target -10 dBFS")
     }
 
     @Test
     fun bothSpeakersContributeEqually() {
         // Speaker A is a 300 Hz tone, speaker B a 1000 Hz tone, recorded at very different levels.
-        val low = VoiceBank.fromUtterances(List(4) { TestSignals.sine(300.0, 3.0, peakDbfs = -6.0) })
-        val high = VoiceBank.fromUtterances(List(4) { TestSignals.sine(1000.0, 3.0, peakDbfs = -30.0) })
+        val low = VoiceBank.fromUtterances(List(8) { TestSignals.sine(300.0, 3.0, peakDbfs = -6.0) })
+        val high = VoiceBank.fromUtterances(List(8) { TestSignals.sine(1000.0, 3.0, peakDbfs = -30.0) })
         val out = TestSignals.generate(BabbleGenerator(listOf(low, high), BabbleConfig(), Random(11)), 20.0)
         val lowPower = TestSignals.bandPower(out, 270.0, 330.0)
         val highPower = TestSignals.bandPower(out, 900.0, 1100.0)
@@ -275,11 +296,17 @@ class BabbleGeneratorTest {
         assertEquals(8, boundaries.size)
         assertTrue(boundaries.all { it > 0 })
         val sorted = boundaries.sorted()
-        // No two voices reach their first join within the same crossfade.
-        for (i in 1 until sorted.size) {
-            assertTrue(sorted[i] - sorted[i - 1] > 640, "boundaries $sorted")
-        }
+        assertEquals(8, sorted.toSet().size, "boundaries $sorted")
         assertTrue(sorted.last() - sorted.first() > SAMPLE_RATE / 4, "boundaries $sorted")
+        // The offsets are random, not a fixed pattern: other seeds give other offsets, and over
+        // many generators the first joins are spread over the whole range of unit lengths.
+        val firstJoins = ArrayList<Int>()
+        for (seed in 100L until 140L) {
+            firstJoins.addAll(BabbleGenerator(listOf(bankA), BabbleConfig(), Random(seed)).samplesToNextBoundary().toList())
+        }
+        assertTrue(firstJoins.toSet().size > 300, "${firstJoins.toSet().size} distinct offsets in 320")
+        assertTrue(firstJoins.count { it < SAMPLE_RATE / 5 } in 20..200, "first joins within 200 ms: ${firstJoins.count { it < SAMPLE_RATE / 5 }}")
+        assertTrue(firstJoins.max() > SAMPLE_RATE, "latest first join ${firstJoins.max()}")
     }
 
     @Test
@@ -331,49 +358,125 @@ class BabbleGeneratorTest {
     }
 
     @Test
-    fun tinyBankStillProducesBabble() {
-        // One short take: far less material than a single unit needs.
-        val take = TestSignals.concat(TestSignals.silence(0.3), TestSignals.sine(250.0, 0.5, peakDbfs = -12.0), TestSignals.silence(0.3))
-        val bank = VoiceBank.fromUtterances(listOf(take))
-        assertTrue(bank.segmentCount > 0)
-        assertTrue(bank.speechSeconds < 0.6)
-        val out = TestSignals.generate(BabbleGenerator(listOf(bank), BabbleConfig(), Random(19)), 30.0)
-        assertLevels(out, -20.0, "0.5 s bank")
-        // And together with a normal bank.
-        val mixed = TestSignals.generate(BabbleGenerator(listOf(bank, bankA), BabbleConfig(), Random(19)), 30.0)
-        assertLevels(mixed, -20.0, "0.5 s bank + normal bank")
+    fun banksWithTooLittleSpeechAreNotUsable() {
+        val config = BabbleConfig()
+        // voices x longest unit x slowest playback = 8 x 2 s x 1.06.
+        assertEquals(16.96, VoiceBank.requiredSpeechSeconds(config), 1e-9)
+        assertEquals(16.96, VoiceBank.requiredSpeechSeconds(), 1e-9)
+        assertEquals(2.0 * 0.5 * 1.1, VoiceBank.requiredSpeechSeconds(BabbleConfig(voices = 2, maxSegmentMs = 500, speedJitter = 0.1)), 1e-9)
+
+        assertFalse(emptyBank.isUsable())
+        assertFalse(emptyBank.isUsable(BabbleConfig(voices = 1, minSegmentMs = 50, maxSegmentMs = 50)))
+        assertTrue(bankA.isUsable())
+        assertTrue(bankA.isUsable(config))
+
+        // One short word: the bank is not empty, but all voices could do is loop it.
+        val word = TestSignals.concat(TestSignals.silence(0.3), TestSignals.sine(250.0, 0.3, peakDbfs = -12.0), TestSignals.silence(0.3))
+        val tiny = VoiceBank.fromUtterances(listOf(word))
+        assertTrue(tiny.segmentCount > 0 && tiny.speechSeconds < 0.5)
+        assertFalse(tiny.isUsable())
+        assertFailsWith<IllegalArgumentException> { BabbleGenerator(listOf(tiny), config, Random(1)) }
+        assertFailsWith<IllegalArgumentException> { BabbleGenerator(listOf(tiny, emptyBank, tiny)) }
+
+        // One whole phrase is still far too little for eight voices ...
+        val phrase = VoiceBank.fromUtterances(listOf(TestSignals.utterance(700).samples))
+        assertTrue(phrase.speechSeconds > 3.0 && phrase.speechSeconds < 16.96, "${phrase.speechSeconds} s")
+        assertFalse(phrase.isUsable())
+        assertFailsWith<IllegalArgumentException> { BabbleGenerator(listOf(phrase), config, Random(1)) }
+        // ... but enough for a smaller configuration, and the generator agrees with isUsable.
+        val small = BabbleConfig(voices = 2, maxSegmentMs = 1000)
+        assertTrue(phrase.isUsable(small))
+        assertLevels(TestSignals.generate(BabbleGenerator(listOf(phrase), small, Random(20)), 60.0), -20.0, "one phrase, 2 voices")
+
+        // An unusable bank is ignored exactly like an empty one.
+        val mixed = BabbleGenerator(listOf(tiny, bankA, phrase), config, Random(3))
+        assertContentEquals(intArrayOf(8), mixed.voicesPerBank)
+        val alone = BabbleGenerator(listOf(bankA), config, Random(3))
+        assertContentEquals(TestSignals.generate(alone, 2.0), TestSignals.generate(mixed, 2.0))
     }
 
     @Test
-    fun singleTakeBankWorks() {
-        val bank = VoiceBank.fromUtterances(listOf(TestSignals.utterance(700).samples))
-        assertTrue(bank.segmentCount > 0)
-        val out = TestSignals.generate(BabbleGenerator(listOf(bank), BabbleConfig(), Random(20)), 60.0)
-        assertLevels(out, -20.0, "single take bank")
+    fun usabilityThresholdIsExact() {
+        // Tone takes give a bank of a known length: 3 s of tone plus 40 ms of padding each.
+        val takes = List(6) { TestSignals.concat(TestSignals.silence(0.5), TestSignals.sine(200.0 + 10 * it, 3.0, peakDbfs = -12.0), TestSignals.silence(0.5)) }
+        val bank = VoiceBank.fromUtterances(takes)
+        val seconds = bank.speechSeconds
+        assertTrue(seconds in 18.0..18.6, "$seconds s")
+        val justEnough = BabbleConfig(voices = 9, maxSegmentMs = 2000, speedJitter = seconds / 18.0 - 1.0 - 1e-6)
+        val justTooMuch = justEnough.copy(speedJitter = justEnough.speedJitter + 1e-4)
+        assertTrue(bank.isUsable(justEnough))
+        assertFalse(bank.isUsable(justTooMuch))
+        BabbleGenerator(listOf(bank), justEnough, Random(1))
+        assertFailsWith<IllegalArgumentException> { BabbleGenerator(listOf(bank), justTooMuch, Random(1)) }
+    }
+
+    /** Largest normalised autocorrelation of the 2 kHz-decimated signal over lags of 0.1..[maxLagSeconds] s. */
+    private fun strongestRepetition(out: ShortArray, maxLagSeconds: Double): Double {
+        val factor = 16
+        val n = out.size / factor
+        val x = DoubleArray(n)
+        for (i in 0 until n) {
+            var sum = 0.0
+            for (j in 0 until factor) sum += out[i * factor + j]
+            x[i] = sum / factor
+        }
+        val rate = SAMPLE_RATE / factor
+        val span = n - (maxLagSeconds * rate).toInt()
+        var energy = 0.0
+        for (i in 0 until span) energy += x[i] * x[i]
+        var strongest = 0.0
+        for (lag in rate / 10..(maxLagSeconds * rate).toInt()) {
+            var cross = 0.0
+            var shifted = 0.0
+            for (i in 0 until span) {
+                cross += x[i] * x[i + lag]
+                shifted += x[i + lag] * x[i + lag]
+            }
+            strongest = maxOf(strongest, abs(cross) / Math.sqrt(energy * shifted + 1e-9))
+        }
+        return strongest
+    }
+
+    @Test
+    fun outputIsNotPeriodicEvenWithoutSpeedJitterAndWithTheLeastUsableMaterial() {
+        // Three phrases, about 17 s of speech: just enough for 8 voices of up to 2 s.
+        val config = BabbleConfig(speedJitter = 0.0)
+        val takes = ArrayList<ShortArray>()
+        var seed = 800L
+        while (!VoiceBank.fromUtterances(takes).isUsable(config)) takes.add(TestSignals.utterance(seed++).samples)
+        val bank = VoiceBank.fromUtterances(takes)
+        assertTrue(bank.speechSeconds < 1.5 * VoiceBank.requiredSpeechSeconds(config), "${bank.speechSeconds} s")
+        val out = TestSignals.generate(BabbleGenerator(listOf(bank), config, Random(51)), 30.0)
+        val repetition = strongestRepetition(out, 8.0)
+        // The detector itself: a looped 0.3 s chunk of the same audio is found at once.
+        val loop = ShortArray(out.size) { out[it % 9600] }
+        val loopRepetition = strongestRepetition(loop, 8.0)
+        println("periodicity: %d takes, %.1f s bank, strongest autocorrelation %.3f (looped 0.3 s chunk: %.3f)".format(takes.size, bank.speechSeconds, repetition, loopRepetition))
+        assertTrue(loopRepetition > 0.99)
+        assertTrue(repetition < 0.5, "autocorrelation $repetition")
+        assertLevels(out, -20.0, "least usable bank, no jitter")
     }
 
     @Test
     fun extremeConfigsDoNotBreakTheStream() {
         val configs = listOf(
             BabbleConfig(voices = 1),
-            BabbleConfig(voices = 32),
-            BabbleConfig(minSegmentMs = 1, maxSegmentMs = 5),
-            BabbleConfig(minSegmentMs = 20, maxSegmentMs = 60, crossfadeMs = 100),
-            BabbleConfig(minSegmentMs = 5000, maxSegmentMs = 20000),
+            BabbleConfig(voices = 32, maxSegmentMs = 1500),
+            BabbleConfig(minSegmentMs = 50, maxSegmentMs = 60),
+            BabbleConfig(minSegmentMs = 50, maxSegmentMs = 60, crossfadeMs = 100),
+            BabbleConfig(minSegmentMs = 5000, maxSegmentMs = 14000),
             BabbleConfig(speedJitter = 0.5),
             BabbleConfig(crossfadeMs = 0),
-            BabbleConfig(targetRmsDbfs = -3.0),
-            BabbleConfig(targetRmsDbfs = 20.0),
+            BabbleConfig(targetRmsDbfs = -10.0),
             BabbleConfig(targetRmsDbfs = -100.0),
         )
         for (config in configs) {
+            assertTrue(bankA.isUsable(config), config.toString())
             val out = TestSignals.generate(BabbleGenerator(listOf(bankA), config, Random(21)), 10.0)
             assertEquals(0.0, Level.clippedFraction(out), config.toString())
             assertTrue(Level.peakDbfs(out) < -0.3, "$config peak ${Level.peakDbfs(out)}")
-            // Units of a few milliseconds are excluded: they all start on energy minima of the
-            // bank, so their mix is quieter than the level control can make up for.
-            if (config.targetRmsDbfs in -40.0..-10.0 && config.minSegmentMs >= 20) {
-                assertTrue(abs(Level.rmsDbfs(out) - config.targetRmsDbfs) < 1.5, "$config level ${Level.rmsDbfs(out)}")
+            if (config.targetRmsDbfs >= -40.0) {
+                assertTrue(abs(Level.rmsDbfs(out) - config.targetRmsDbfs) < 1.0, "$config level ${Level.rmsDbfs(out)}")
             }
         }
     }
@@ -384,7 +487,8 @@ class BabbleGeneratorTest {
         val random = Random(2024)
         var generators = 0
         var emptyBanks = 0
-        repeat(400) { round ->
+        var unusableBanks = 0
+        repeat(600) { round ->
             val takes = List(random.nextInt(5)) {
                 val length = when (random.nextInt(4)) {
                     0 -> random.nextInt(400)
@@ -417,23 +521,28 @@ class BabbleGeneratorTest {
                 return@repeat
             }
             assertEquals(0.0, Level.clippedFraction(bank.data), "round $round")
-            val minSegment = 1 + random.nextInt(600)
+            val minSegment = 50 + random.nextInt(300)
             val config = BabbleConfig(
-                voices = 1 + random.nextInt(10),
+                voices = 1 + random.nextInt(4),
                 minSegmentMs = minSegment,
-                maxSegmentMs = minSegment + random.nextInt(2500),
+                maxSegmentMs = minSegment + random.nextInt(600),
                 speedJitter = random.nextDouble() * 0.5,
                 crossfadeMs = random.nextInt(100),
                 targetRmsDbfs = -40.0 + 30.0 * random.nextDouble(),
             )
+            if (!bank.isUsable(config)) {
+                unusableBanks++
+                assertFailsWith<IllegalArgumentException>("round $round") { BabbleGenerator(listOf(bank), config, Random(1)) }
+                return@repeat
+            }
             val generator = BabbleGenerator(listOf(bank), config, Random(round.toLong()))
             val out = TestSignals.generate(generator, 1.5, chunk = 1 + random.nextInt(2000))
             assertEquals(0.0, Level.clippedFraction(out), "round $round $config")
             assertTrue(Level.peakDbfs(out) < -0.3, "round $round $config peak ${Level.peakDbfs(out)}")
             generators++
         }
-        println("fuzz: $generators generators run, $emptyBanks empty banks")
-        assertTrue(generators > 100 && emptyBanks > 20, "$generators generators, $emptyBanks empty banks")
+        println("fuzz: $generators generators run, $emptyBanks empty banks, $unusableBanks banks too small for their configuration")
+        assertTrue(generators > 60 && emptyBanks > 20 && unusableBanks > 20, "$generators generators, $emptyBanks empty, $unusableBanks unusable")
     }
 
     @Test
@@ -450,19 +559,117 @@ class BabbleGeneratorTest {
         assertTrue(factor >= 20.0, "only ${factor}x real time")
     }
 
-    @Test
-    fun readDoesNotAllocate() {
-        val bean = java.lang.management.ManagementFactory.getThreadMXBean() as? com.sun.management.ThreadMXBean ?: return
-        if (!bean.isThreadAllocatedMemorySupported) return
-        val generator = BabbleGenerator(listOf(bankA, bankB), BabbleConfig(), Random(23))
+    private fun allocatedWhileGenerating(generator: BabbleGenerator, seconds: Int): Long? {
+        val bean = java.lang.management.ManagementFactory.getThreadMXBean() as? com.sun.management.ThreadMXBean ?: return null
+        if (!bean.isThreadAllocatedMemorySupported) return null
         val buffer = ShortArray(640)
         repeat(50 * 30) { generator.read(buffer) }
         @Suppress("DEPRECATION")
         val thread = Thread.currentThread().id
         val before = bean.getThreadAllocatedBytes(thread)
-        repeat(50 * 60) { generator.read(buffer) }
+        repeat(50 * seconds) { generator.read(buffer) }
+        return bean.getThreadAllocatedBytes(thread) - before
+    }
+
+    /** Counts how the generator uses its Random. Only nextBytes may be called, and only with the pool. */
+    private class CountingRandom(seed: Long) : Random(seed) {
+        var refills = 0
+        var otherCalls = 0
+        var counting = false
+
+        override fun nextBytes(bytes: ByteArray) {
+            if (counting) {
+                refills++
+                if (bytes.size != BabbleGenerator.RANDOM_POOL_BYTES) otherCalls++
+            }
+            super.nextBytes(bytes)
+        }
+
+        override fun next(bits: Int): Int {
+            // java.util.Random.nextBytes is implemented with nextInt(), which lands here: only
+            // calls from outside nextBytes are of interest.
+            if (counting && !insideNextBytes()) otherCalls++
+            return super.next(bits)
+        }
+
+        private fun insideNextBytes(): Boolean =
+            Thread.currentThread().stackTrace.any { it.methodName == "nextBytes" }
+    }
+
+    @Test
+    fun readDoesNotAllocateWithSeededRandom() {
+        val allocated = allocatedWhileGenerating(BabbleGenerator(listOf(bankA, bankB), BabbleConfig(), Random(23)), 300) ?: return
+        println("allocation, java.util.Random: $allocated bytes for 300 s of audio")
+        assertEquals(0L, allocated)
+    }
+
+    @Test
+    fun readTouchesRandomOnlyToRefillThePool() {
+        val random = CountingRandom(24)
+        val generator = BabbleGenerator(listOf(bankA, bankB), BabbleConfig(), random)
+        var units = 0
+        generator.onUnitStart = { _, _, _, _ -> units++ }
+        random.counting = true
+        TestSignals.generate(generator, 600.0)
+        println("random pool: ${random.refills} refills of ${BabbleGenerator.RANDOM_POOL_BYTES} bytes for $units units in 600 s, i.e. one every ${600 / maxOf(1, random.refills)} s")
+        assertEquals(0, random.otherCalls)
+        assertTrue(random.refills in 1..20, "${random.refills} refills")
+        assertTrue(units > 3000)
+    }
+
+    /** SecureRandom that reports when the generator comes to it. */
+    private class ObservedSecureRandom : java.security.SecureRandom() {
+        @Volatile var refills = 0
+        @Volatile var otherRequests = 0
+
+        override fun nextBytes(bytes: ByteArray) {
+            if (bytes.size == BabbleGenerator.RANDOM_POOL_BYTES) refills++ else otherRequests++
+            super.nextBytes(bytes)
+        }
+    }
+
+    @Test
+    fun readDoesNotAllocateWithSecureRandomBetweenPoolRefills() {
+        // The production default. read() goes to SecureRandom only to refill its pool, so between
+        // two refills it must allocate nothing at all, exactly as with a seeded Random.
+        val bean = java.lang.management.ManagementFactory.getThreadMXBean() as? com.sun.management.ThreadMXBean ?: return
+        if (!bean.isThreadAllocatedMemorySupported) return
+        val secure = ObservedSecureRandom()
+        val generator = BabbleGenerator(listOf(bankA, bankB), BabbleConfig(), secure)
+        val buffer = ShortArray(640)
+        @Suppress("DEPRECATION")
+        val thread = Thread.currentThread().id
+        // Warm up, then run on to just past the next refill, so that a fresh pool lies ahead.
+        repeat(50 * 30) { generator.read(buffer) }
+        secure.otherRequests = 0
+        val refillsBefore = secure.refills
+        var guard = 0
+        while (secure.refills == refillsBefore) {
+            generator.read(buffer)
+            check(++guard < 50 * 600) { "no pool refill within 10 minutes of audio" }
+        }
+        val refills = secure.refills
+        val before = bean.getThreadAllocatedBytes(thread)
+        repeat(50 * 30) { generator.read(buffer) }
         val allocated = bean.getThreadAllocatedBytes(thread) - before
-        println("allocation: $allocated bytes for 60 s of audio (${60 * SAMPLE_RATE} samples)")
-        assertTrue(allocated < 16 * 1024, "$allocated bytes allocated while generating 60 s")
+        assertEquals(refills, secure.refills, "a refill fell into the measured 30 s; the pool is smaller than assumed")
+        println("allocation, SecureRandom (${secure.algorithm}), 30 s between two pool refills: $allocated bytes")
+        assertEquals(0L, allocated)
+
+        // For the record: what one refill costs inside this JDK's SecureRandom.
+        val across = bean.getThreadAllocatedBytes(thread)
+        var seconds = 0
+        while (secure.refills < refills + 3) {
+            repeat(50) { generator.read(buffer) }
+            seconds++
+        }
+        val perRefill = (bean.getThreadAllocatedBytes(thread) - across) / 3
+        println(
+            "allocation, SecureRandom (${secure.algorithm}), across 3 refills in $seconds s of audio: $perRefill bytes per refill of ${BabbleGenerator.RANDOM_POOL_BYTES} bytes, " +
+                "%.0f bytes per minute of audio".format(perRefill * 3.0 * 60.0 / seconds),
+        )
+        assertEquals(0, secure.otherRequests, "the generator asked SecureRandom for something other than a pool refill")
+        // Allocation inside SecureRandom.nextBytes is the JDK's, but it must stay proportional to the pool.
+        assertTrue(perRefill < 8L * BabbleGenerator.RANDOM_POOL_BYTES, "$perRefill bytes per refill")
     }
 }
