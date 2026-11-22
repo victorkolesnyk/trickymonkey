@@ -2,6 +2,7 @@ package io.github.victorkolesnyk.hamir.core
 
 import kotlin.math.max
 import kotlin.math.min
+import kotlin.math.sqrt
 
 /**
  * Energy-based speech activity detection shared by [Level.activeSpeechDbfs], [TakeCheck] and [VoiceBank].
@@ -16,12 +17,19 @@ internal object SpeechActivity {
      */
     private const val MARGIN = 38.9
 
-    /** When the buffer has a clear noise floor, a speech frame must also be 6 dB above it ... */
-    private const val ABOVE_FLOOR = 4.0
-
-    /** ... but that rule never rejects frames within 10 dB of the active level, so steady signals stay active. */
-    private const val FLOOR_RULE_LIMIT = 0.1
+    /**
+     * Noise-floor rule: a speech frame must also stand above the quiet frames of the buffer (their
+     * 10th percentile) by the smaller of 6 dB and half the distance, in dB, between that floor and
+     * the loud frames (the mean of the loudest [LOUD_SHARE]).
+     *
+     * Both reference points come straight from the sorted frame powers. They must not be derived
+     * from the level of the frames accepted so far: with ambient noise 10..16 dB below the speech
+     * the P.56 margin alone accepts the ambient frames too, that level is then diluted by them,
+     * and a rule tied to it switches itself off exactly when it is needed.
+     */
+    private const val MAX_ABOVE_FLOOR = 4.0
     private const val FLOOR_PERCENTILE = 0.10
+    private const val LOUD_SHARE = 0.15
 
     /**
      * Loud material shorter than this that towers above everything else by more than the margin
@@ -29,10 +37,19 @@ internal object SpeechActivity {
      */
     private const val MIN_ACTIVE_MS = 200
 
+    /**
+     * Pauses up to this long between speech frames belong to the speech (the hangover time of
+     * ITU-T P.56): weak syllables and stop closures inside a phrase count towards its level.
+     */
+    const val HANGOVER_MS = 200
+
     /** Result of [analyse]: a frame is speech when threshold <= power < ceiling. */
     class Activity(val threshold: Double, val ceiling: Double) {
         fun isActive(power: Double): Boolean = power > 0.0 && power >= threshold && power < ceiling
     }
+
+    /** Result of [measure]: mean power of the speech frames and how many there are. */
+    class Measurement(val power: Double, val frames: Int)
 
     /**
      * Mean-square power (relative to full scale) of consecutive [frameMs] frames. A trailing partial
@@ -62,9 +79,12 @@ internal object SpeechActivity {
     /**
      * Finds the speech/pause threshold for the given frame powers.
      *
-     * Frames are visited from the loudest down while each one is within [MARGIN] of the mean of
-     * those already accepted; the first frame that falls out marks the threshold. This follows the
-     * actual level of the speech whether it fills the whole buffer or only a small part of it.
+     * Two rules, the stricter one wins. (1) P.56 margin: frames are visited from the loudest down
+     * while each one is within [MARGIN] of the mean of those already accepted; the first frame that
+     * falls out marks the threshold. This follows the level of the speech whether it fills the
+     * whole buffer or a small part of it, and decides when the pauses are (nearly) silent.
+     * (2) Noise floor, see [MAX_ABOVE_FLOOR]: decides when the pauses hold ambient noise that is
+     * less than the margin below the speech.
      */
     fun analyse(powers: DoubleArray, frameMs: Int = FRAME_MS): Activity {
         if (powers.isEmpty()) return Activity(Double.POSITIVE_INFINITY, Double.POSITIVE_INFINITY)
@@ -74,7 +94,6 @@ internal object SpeechActivity {
         var top = sorted.size - 1
         var ceiling = Double.POSITIVE_INFINITY
         var threshold: Double
-        var level: Double
         while (true) {
             var sum = 0.0
             var i = top
@@ -92,11 +111,52 @@ internal object SpeechActivity {
                 continue
             }
             threshold = if (i < 0) 0.0 else sorted[i + 1]
-            level = sum / accepted
             break
         }
         val floor = sorted[(top * FLOOR_PERCENTILE).toInt()]
-        threshold = max(threshold, min(floor * ABOVE_FLOOR, level * FLOOR_RULE_LIMIT))
+        if (floor > 0.0) {
+            val loudFrames = max(1, ((top + 1) * LOUD_SHARE).toInt())
+            var loud = 0.0
+            for (i in top - loudFrames + 1..top) loud += sorted[i]
+            loud /= loudFrames
+            threshold = max(threshold, floor * min(MAX_ABOVE_FLOOR, sqrt(loud / floor)))
+        }
         return Activity(threshold, ceiling)
+    }
+
+    /**
+     * Active speech level of a sequence of frame powers: the mean over all speech frames plus the
+     * pauses of at most [hangoverMs] between them. Outlier frames (see [MIN_ACTIVE_MS]) are left out.
+     */
+    fun measure(powers: DoubleArray, frameMs: Int = FRAME_MS, hangoverMs: Int = HANGOVER_MS): Measurement {
+        val activity = analyse(powers, frameMs)
+        val hangover = hangoverMs / frameMs
+        var sum = 0.0
+        var frames = 0
+        var gapSum = 0.0
+        var gapFrames = 0
+        var gapLength = 0
+        var inSpeech = false
+        for (p in powers) {
+            if (activity.isActive(p)) {
+                if (inSpeech && gapLength <= hangover) {
+                    sum += gapSum
+                    frames += gapFrames
+                }
+                sum += p
+                frames++
+                gapSum = 0.0
+                gapFrames = 0
+                gapLength = 0
+                inSpeech = true
+            } else if (inSpeech) {
+                gapLength++
+                if (p < activity.ceiling) {
+                    gapSum += p
+                    gapFrames++
+                }
+            }
+        }
+        return Measurement(if (frames > 0) sum / frames else 0.0, frames)
     }
 }

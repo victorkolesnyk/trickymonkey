@@ -132,7 +132,7 @@ object Gain {
 enum class TakeQuality { OK, TOO_SHORT, TOO_QUIET, CLIPPED }
 
 object TakeCheck {
-    /** A take needs at least this much detected speech (pauses excluded). */
+    /** A take needs at least this much detected speech (pauses longer than 200 ms excluded). */
     const val MIN_SPEECH_SECONDS = 0.8
 
     /**
@@ -155,17 +155,9 @@ object TakeCheck {
         require(sampleRate > 0) { "sampleRate must be positive" }
         if (samples.isEmpty()) return TakeQuality.TOO_SHORT
         if (Level.clippedFraction(samples) > MAX_CLIPPED_FRACTION) return TakeQuality.CLIPPED
-        val powers = SpeechActivity.framePowers(samples, sampleRate)
-        val activity = SpeechActivity.analyse(powers)
-        var sum = 0.0
-        var active = 0
-        for (p in powers) {
-            if (activity.isActive(p)) {
-                sum += p
-                active++
-            }
-        }
-        val level = if (active == 0) SILENCE_DBFS else Level.powerToDbfs(sum / active)
+        val measurement = SpeechActivity.measure(SpeechActivity.framePowers(samples, sampleRate))
+        val active = measurement.frames
+        val level = if (active == 0) SILENCE_DBFS else Level.powerToDbfs(measurement.power)
         if (level < MIN_SPEECH_DBFS) return TakeQuality.TOO_QUIET
         val speechSeconds = min(active * SpeechActivity.FRAME_MS / 1000.0, samples.size.toDouble() / sampleRate)
         if (speechSeconds < MIN_SPEECH_SECONDS) return TakeQuality.TOO_SHORT

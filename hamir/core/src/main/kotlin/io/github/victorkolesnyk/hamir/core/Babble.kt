@@ -36,6 +36,13 @@ class VoiceBank private constructor(
     /** Seconds of speech left after trimming silence. */
     val speechSeconds: Double get() = data.size.toDouble() / SAMPLE_RATE
 
+    /**
+     * Whether this bank holds enough speech to feed [BabbleGenerator] with [config]:
+     * at least [requiredSpeechSeconds]. The generator ignores banks for which this is false.
+     */
+    fun isUsable(config: BabbleConfig = BabbleConfig()): Boolean =
+        segmentCount > 0 && speechSeconds >= requiredSpeechSeconds(config)
+
     /** Index of the cut point closest to [position]. */
     internal fun nearestCut(position: Int): Int {
         var lo = 0
@@ -96,6 +103,20 @@ class VoiceBank private constructor(
 
         /** Corner frequency of the DC / rumble blocker. */
         private const val HIGH_PASS_HZ = 50.0
+
+        /**
+         * Least amount of speech a bank needs for [config]: voices x longest unit (stretched by the
+         * largest slow-down), i.e. enough for every voice to be inside a full-length unit of its
+         * own at the same moment without two voices having to play the same audio.
+         *
+         * With less the voices keep doubling each other, and a bank shorter than one unit could
+         * only be looped whole, which makes the "babble" periodic and trivially predictable.
+         * The figure counts all voices even when they will be shared between several banks, so
+         * that the answer for a bank does not depend on which other banks are present.
+         * 17 s for the default configuration.
+         */
+        fun requiredSpeechSeconds(config: BabbleConfig = BabbleConfig()): Double =
+            max(1, config.voices) * (max(config.minSegmentMs, config.maxSegmentMs) / 1000.0) * (1.0 + max(0.0, config.speedJitter))
 
         /** @param utterances raw takes at [sampleRate]; they are resampled to [SAMPLE_RATE] when needed. */
         fun fromUtterances(utterances: List<ShortArray>, sampleRate: Int = SAMPLE_RATE): VoiceBank {
@@ -171,8 +192,10 @@ class VoiceBank private constructor(
             val activity = SpeechActivity.analyse(contour, 1000 * FRAME / SAMPLE_RATE)
             val stretchStart = IntList()
             val stretchEnd = IntList()
-            var activePower = 0.0
-            var activeFrames = 0
+            // The level of a take is measured over its stretches including the bridged short pauses
+            // (as Level.activeSpeechDbfs does), but without outlier frames.
+            var levelPower = 0.0
+            var levelFrames = 0
             var k = 0
             while (k < frames) {
                 if (!activity.isActive(contour[k])) {
@@ -183,27 +206,37 @@ class VoiceBank private constructor(
                 var end = k + 1
                 var count = 0
                 var sum = 0.0
+                var sumFrames = 0
                 var gap = 0
+                var gapSum = 0.0
+                var gapFrames = 0
                 while (k < frames && gap < PAUSE_FRAMES) {
                     if (activity.isActive(contour[k])) {
+                        sum += gapSum + power[k]
+                        sumFrames += gapFrames + 1
+                        gapSum = 0.0
+                        gapFrames = 0
                         gap = 0
                         end = k + 1
                         count++
-                        sum += power[k]
                     } else {
                         gap++
+                        if (contour[k] < activity.ceiling) {
+                            gapSum += power[k]
+                            gapFrames++
+                        }
                     }
                     k++
                 }
                 if (count >= MIN_STRETCH_ACTIVE_FRAMES) {
                     stretchStart.add(start)
                     stretchEnd.add(end)
-                    activePower += sum
-                    activeFrames += count
+                    levelPower += sum
+                    levelFrames += sumFrames
                 }
             }
-            if (activeFrames == 0) return null
-            val activeLevel = activePower / activeFrames
+            if (levelFrames == 0) return null
+            val activeLevel = levelPower / levelFrames
             if (activeLevel <= Level.FULL_SCALE_POWER * 10.0.pow(MIN_USABLE_DBFS / 10.0)) return null
 
             // 4. Per-take normalisation of the active speech level, guarded against clipping.
@@ -310,7 +343,12 @@ data class BabbleConfig(
  * Without it a babble of few voices dips whenever several of them hit a quiet syllable at once,
  * and those dips are exactly where the protected speech would show through.
  *
- * [read] does not allocate. Bank audio is shared, not copied.
+ * Banks without enough speech for the configuration ([VoiceBank.isUsable]) are ignored.
+ *
+ * Real-time behaviour: [read] itself never allocates and never touches [Random] except to refill
+ * a preallocated pool of [RANDOM_POOL_BYTES] random bytes with a single Random.nextBytes call,
+ * about once a minute with the default configuration. Whether that call allocates or locks is up
+ * to the Random implementation. Bank audio is shared, not copied.
  */
 class BabbleGenerator(
     banks: List<VoiceBank>,
@@ -329,7 +367,7 @@ class BabbleGenerator(
         @JvmField var gain = 0f
     }
 
-    private val random: Random = random
+    private val random = RandomPool(random, RANDOM_POOL_BYTES)
     private val banks: Array<VoiceBank>
     private val voices: Int
     private val jitter: Double
@@ -339,7 +377,7 @@ class BabbleGenerator(
     private val fadeIn: FloatArray
     private val fadeOut: FloatArray
 
-    /** Per bank: how many leading cut points may start a unit (0 = bank shorter than one unit, play it whole). */
+    /** Per bank: how many leading cut points may start a unit (the rest are too close to the end of the bank). */
     private val validStarts: IntArray
     private val voiceBank: IntArray
     private val voiceGain: FloatArray
@@ -361,21 +399,27 @@ class BabbleGenerator(
     /** Test hook, called for every unit started after construction: (voice, source offset, output samples, speed). */
     internal var onUnitStart: ((voice: Int, start: Int, length: Int, speed: Double) -> Unit)? = null
 
-    /** How many voices draw from each non-empty bank, in the order the banks were given. */
+    /** How many voices draw from each usable bank, in the order the banks were given. */
     internal val voicesPerBank: IntArray
 
     init {
         require(config.voices >= 1) { "voices must be at least 1" }
-        require(config.minSegmentMs >= 1) { "minSegmentMs must be positive" }
+        require(config.minSegmentMs >= MIN_SEGMENT_MS) {
+            "minSegmentMs must be at least $MIN_SEGMENT_MS: shorter units play little more than the quiet cut points"
+        }
         require(config.maxSegmentMs >= config.minSegmentMs) { "maxSegmentMs must not be below minSegmentMs" }
         require(config.maxSegmentMs <= MAX_SEGMENT_MS) { "maxSegmentMs must not exceed $MAX_SEGMENT_MS" }
         require(config.speedJitter >= 0.0 && config.speedJitter <= MAX_SPEED_JITTER) {
             "speedJitter must be within 0..$MAX_SPEED_JITTER"
         }
         require(config.crossfadeMs >= 0) { "crossfadeMs must not be negative" }
-        require(config.targetRmsDbfs.isFinite()) { "targetRmsDbfs must be finite" }
-        val usable = banks.filter { it.segmentCount > 0 }
-        require(usable.isNotEmpty()) { "all voice banks are empty" }
+        require(config.targetRmsDbfs.isFinite() && config.targetRmsDbfs <= MAX_TARGET_RMS_DBFS) {
+            "targetRmsDbfs must not exceed $MAX_TARGET_RMS_DBFS: the limiter would hold a louder mix below its target"
+        }
+        val usable = banks.filter { it.isUsable(config) }
+        require(usable.isNotEmpty()) {
+            "no voice bank has the ${VoiceBank.requiredSpeechSeconds(config)} s of speech this configuration needs"
+        }
 
         this.banks = usable.toTypedArray()
         voices = config.voices
@@ -384,18 +428,12 @@ class BabbleGenerator(
         maxOut = max(minOut, (config.maxSegmentMs.toLong() * SAMPLE_RATE / 1000).toInt())
 
         val worstMinSource = ceil(minOut * (1.0 + jitter)).toInt() + SOURCE_MARGIN
-        validStarts = IntArray(usable.size)
-        var shortestUnit = minOut
-        for (b in usable.indices) {
-            val size = usable[b].data.size
-            if (size > worstMinSource) {
-                validStarts[b] = usable[b].cutsUpTo(size - worstMinSource)
-            } else {
-                shortestUnit = min(shortestUnit, ((size - SOURCE_MARGIN) / (1.0 + jitter)).toInt())
-            }
-        }
+        // A usable bank is at least voices x longest unit long, so some cut point always qualifies.
+        // (The first one, offset 0, is kept even in the corner case of a single voice with a bank of
+        // exactly one unit; the unit then comes out a couple of samples short.)
+        validStarts = IntArray(usable.size) { max(1, usable[it].cutsUpTo(usable[it].data.size - worstMinSource)) }
         // A unit must be at least two fades long, otherwise three units of one voice could overlap.
-        fade = min(config.crossfadeMs.toLong() * SAMPLE_RATE / 1000, (shortestUnit / 2).toLong()).toInt()
+        fade = min(config.crossfadeMs.toLong() * SAMPLE_RATE / 1000, ((minOut - 2 * SOURCE_MARGIN) / 2).toLong()).toInt()
         fadeIn = FloatArray(fade)
         fadeOut = FloatArray(fade)
         for (i in 0 until fade) {
@@ -421,7 +459,7 @@ class BabbleGenerator(
             val player = current[v]
             startUnit(v, player)
             val body = player.length - 2 * fade
-            val skip = fade + if (body > 0) random.nextInt(body) else 0
+            val skip = fade + if (body > 0) this.random.nextInt(body) else 0
             player.played = skip
             player.position = skip * player.step
         }
@@ -429,7 +467,10 @@ class BabbleGenerator(
         for (i in 0 until LOOKAHEAD_BLOCKS) mixNextBlock()
     }
 
-    /** Fills out[offset until offset+length] completely with the next samples at [SAMPLE_RATE]. */
+    /**
+     * Fills out[offset until offset+length] completely with the next samples at [SAMPLE_RATE].
+     * Does not allocate; see the class comment for the one call it may make into [Random].
+     */
     fun read(out: ShortArray, offset: Int = 0, length: Int = out.size - offset) {
         require(offset >= 0 && length >= 0 && offset <= out.size - length) {
             "range offset=$offset length=$length is outside an array of ${out.size} samples"
@@ -458,25 +499,22 @@ class BabbleGenerator(
         val bank = banks[b]
         val size = bank.data.size
         val speed = 1.0 + jitter * (2.0 * random.nextDouble() - 1.0)
-        var start = 0
-        var sourceLength = size
-        if (validStarts[b] > 0) {
-            val wantOut = minOut + if (maxOut > minOut) random.nextInt(maxOut - minOut + 1) else 0
-            val wantSource = ceil(wantOut * speed).toInt() + SOURCE_MARGIN
-            // Prefer material no voice of this bank is playing right now (and not what this voice just played).
-            var tries = 0
-            do {
-                start = bank.cuts[random.nextInt(validStarts[b])]
-                tries++
-            } while (tries < MAX_START_TRIES && isBeingPlayed(b, start, start + wantSource))
-            sourceLength = min(wantSource, size - start)
-            // End on an energy minimum too when one is close and the length stays within limits.
-            val snapped = bank.cuts[bank.nearestCut(start + sourceLength)] - start
-            val minSource = ceil(minOut * speed).toInt() + SOURCE_MARGIN
-            val maxSource = (maxOut * speed).toInt() + SOURCE_MARGIN
-            if (abs(snapped - sourceLength) <= SNAP_SAMPLES && snapped >= minSource && snapped <= maxSource) {
-                sourceLength = snapped
-            }
+        val wantOut = minOut + if (maxOut > minOut) random.nextInt(maxOut - minOut + 1) else 0
+        val wantSource = ceil(wantOut * speed).toInt() + SOURCE_MARGIN
+        // Prefer material no voice of this bank is playing right now (and not what this voice just played).
+        var start: Int
+        var tries = 0
+        do {
+            start = bank.cuts[random.nextInt(validStarts[b])]
+            tries++
+        } while (tries < MAX_START_TRIES && isBeingPlayed(b, start, start + wantSource))
+        var sourceLength = min(wantSource, size - start)
+        // End on an energy minimum too when one is close and the length stays within limits.
+        val snapped = bank.cuts[bank.nearestCut(start + sourceLength)] - start
+        val minSource = ceil(minOut * speed).toInt() + SOURCE_MARGIN
+        val maxSource = (maxOut * speed).toInt() + SOURCE_MARGIN
+        if (abs(snapped - sourceLength) <= SNAP_SAMPLES && snapped >= minSource && snapped <= maxSource) {
+            sourceLength = snapped
         }
         player.data = bank.data
         player.bank = b
@@ -486,7 +524,7 @@ class BabbleGenerator(
         player.step = speed
         player.played = 0
         // The interpolator reads one sample ahead; the margin also absorbs rounding of position.
-        player.length = max(2 * fade, ((sourceLength - SOURCE_MARGIN) / speed).toInt())
+        player.length = ((sourceLength - SOURCE_MARGIN) / speed).toInt()
         player.gain = voiceGain[v]
         onUnitStart?.invoke(v, start, player.length, speed)
     }
@@ -625,15 +663,74 @@ class BabbleGenerator(
         blocksEmitted++
     }
 
-    internal companion object {
+    /**
+     * Random numbers for the audio thread. Values are cut from a byte pool that is refilled by one
+     * [Random.nextBytes] call when it runs out, so that producing audio never goes through the
+     * per-call allocation and locking of SecureRandom. The sequence depends only on the bytes the
+     * source delivers, hence a seeded java.util.Random still gives a reproducible stream.
+     */
+    private class RandomPool(private val source: Random, size: Int) {
+        private val pool = ByteArray(size)
+        private var position = size
+
+        /** 31 uniformly random bits. */
+        private fun nextBits(): Int {
+            if (position + 4 > pool.size) refill()
+            val p = position
+            position = p + 4
+            return ((pool[p].toInt() and 0x7F) shl 24) or ((pool[p + 1].toInt() and 0xFF) shl 16) or
+                ((pool[p + 2].toInt() and 0xFF) shl 8) or (pool[p + 3].toInt() and 0xFF)
+        }
+
+        /** Uniform in 0 until [bound]; same rejection scheme as java.util.Random.nextInt(bound). */
+        fun nextInt(bound: Int): Int {
+            if (bound and -bound == bound) return ((bound.toLong() * nextBits()) shr 31).toInt()
+            var bits: Int
+            var value: Int
+            do {
+                bits = nextBits()
+                value = bits % bound
+            } while (bits - value + (bound - 1) < 0)
+            return value
+        }
+
+        /** Uniform in [0, 1) with 53 random bits. */
+        fun nextDouble(): Double {
+            if (position + 8 > pool.size) refill()
+            var bits = 0L
+            for (i in position until position + 8) bits = (bits shl 8) or (pool[i].toLong() and 0xFF)
+            position += 8
+            return (bits ushr 11) * DOUBLE_UNIT
+        }
+
+        private fun refill() {
+            source.nextBytes(pool)
+            position = 0
+        }
+
+        private companion object {
+            const val DOUBLE_UNIT = 1.0 / (1L shl 53)
+        }
+    }
+
+    companion object {
+        /** Shortest accepted [BabbleConfig.minSegmentMs]. */
+        const val MIN_SEGMENT_MS = 50
+
+        /** Highest accepted [BabbleConfig.targetRmsDbfs]. */
+        const val MAX_TARGET_RMS_DBFS = -10.0
+
+        /** Size of the random pool; one unit consumes 16 to 28 bytes of it. */
+        const val RANDOM_POOL_BYTES = 8192
+
         private val EMPTY = ShortArray(0)
 
         /** Internal processing block: 10 ms. */
-        const val BLOCK = SAMPLE_RATE / 100
+        internal const val BLOCK = SAMPLE_RATE / 100
 
         /** The level window is centred on the block being emitted, so half of it is look-ahead. */
-        const val LOOKAHEAD_BLOCKS = 12
-        const val WINDOW_BLOCKS = 2 * LOOKAHEAD_BLOCKS + 1
+        internal const val LOOKAHEAD_BLOCKS = 12
+        internal const val WINDOW_BLOCKS = 2 * LOOKAHEAD_BLOCKS + 1
 
         /** Range of the level-control gain: +-12 dB. */
         private const val MAX_CONTROL_GAIN = 3.981071705534973

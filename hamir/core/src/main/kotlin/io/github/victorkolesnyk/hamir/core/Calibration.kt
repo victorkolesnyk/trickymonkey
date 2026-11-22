@@ -1,8 +1,17 @@
 package io.github.victorkolesnyk.hamir.core
 
 import kotlin.math.abs
+import kotlin.math.max
 
-enum class CalibrationFailure { NEED_MORE_VOLUME, MIC_CLIPPING, NOISE_NOT_AUDIBLE, NOT_CONVERGING }
+enum class CalibrationFailure {
+    NEED_MORE_VOLUME,
+    MIC_CLIPPING,
+    NOISE_NOT_AUDIBLE,
+    NOT_CONVERGING,
+
+    /** The noise is too loud even at the minimum digital gain: the media volume has to come down. */
+    NEED_LESS_VOLUME,
+}
 
 sealed class CalibrationStep {
     /** Play again with [gainDb] and measure once more. */
@@ -48,33 +57,50 @@ class CalibrationSolver(
      * Feed one measurement taken while the noise played at [currentGainDb].
      *
      * Decision order:
-     * 1. peak above [MIC_CLIP_PEAK_DBFS] -> Fail(MIC_CLIPPING): the measurement cannot be trusted;
-     * 2. |measured - target| <= tolerance -> Done with the current gain;
-     * 3. already at maxGainDb and the noise is less than [AUDIBLE_MARGIN_DB] above ambient -> Fail(NOISE_NOT_AUDIBLE);
-     * 4. the required gain current + (target - measured) is above maxGainDb -> Fail(NEED_MORE_VOLUME),
+     * 1. [currentGainDb] outside minGainDb..maxGainDb -> the measurement is not usable, Adjust to the
+     *    nearest limit (or Fail(NOT_CONVERGING) if this was measurement number maxIterations).
+     *    A Done therefore never carries a gain outside the range;
+     * 2. peak above [MIC_CLIP_PEAK_DBFS] -> Fail(MIC_CLIPPING): the measurement cannot be trusted;
+     * 3. the target noise level lies so close to the ambient level that no measurement could be
+     *    both within tolerance of it and [AUDIBLE_MARGIN_DB] above ambient -> Fail(NOISE_NOT_AUDIBLE);
+     * 4. |measured - target| <= tolerance and the noise is at least [AUDIBLE_MARGIN_DB] above
+     *    ambient -> Done with the current gain. A reading that is on target only because the
+     *    ambient noise alone reaches the target is not a result;
+     * 5. already at maxGainDb and the noise is less than [AUDIBLE_MARGIN_DB] above ambient -> Fail(NOISE_NOT_AUDIBLE);
+     * 6. the required gain current + (target - measured) is above maxGainDb -> Fail(NEED_MORE_VOLUME),
      *    with two exceptions that return Adjust(maxGainDb) instead: the noise is not yet
      *    distinguishable from ambient (the estimate is meaningless, so audibility is tested at
      *    full gain first), or the shortfall at maxGainDb would be within tolerance;
-     * 5. this was measurement number maxIterations, or the gain cannot move any further
-     *    (pinned at minGainDb and still too loud) -> Fail(NOT_CONVERGING);
-     * 6. otherwise Adjust(required gain limited to minGainDb..maxGainDb).
+     * 7. already at minGainDb and still too loud -> Fail(NEED_LESS_VOLUME);
+     * 8. this was measurement number maxIterations, or the gain would not move -> Fail(NOT_CONVERGING);
+     * 9. otherwise Adjust(required gain limited to minGainDb..maxGainDb).
+     *
+     * In steps 6 and 9 "target" is the target noise level, or ambient + [AUDIBLE_MARGIN_DB] when
+     * that is higher (possible only when the two are within tolerance of each other).
      */
     fun next(currentGainDb: Double, measuredNoiseDbfs: Double, measuredPeakDbfs: Double): CalibrationStep {
         require(!currentGainDb.isNaN() && !measuredNoiseDbfs.isNaN() && !measuredPeakDbfs.isNaN()) {
             "measurements must not be NaN"
         }
         iterations++
+        if (currentGainDb < minGainDb - GAIN_EPSILON_DB || currentGainDb > maxGainDb + GAIN_EPSILON_DB) {
+            if (iterations >= maxIterations) return CalibrationStep.Fail(CalibrationFailure.NOT_CONVERGING)
+            return CalibrationStep.Adjust(currentGainDb.coerceIn(minGainDb, maxGainDb))
+        }
         if (measuredPeakDbfs > MIC_CLIP_PEAK_DBFS) return CalibrationStep.Fail(CalibrationFailure.MIC_CLIPPING)
 
-        val error = targetNoiseDbfs - measuredNoiseDbfs
-        if (abs(error) <= toleranceDb) {
-            return CalibrationStep.Done(currentGainDb, speechDbfs - measuredNoiseDbfs)
+        val audibleLevel = ambientDbfs + AUDIBLE_MARGIN_DB
+        if (targetNoiseDbfs + toleranceDb < audibleLevel) return CalibrationStep.Fail(CalibrationFailure.NOISE_NOT_AUDIBLE)
+
+        val audible = measuredNoiseDbfs >= audibleLevel
+        if (audible && abs(targetNoiseDbfs - measuredNoiseDbfs) <= toleranceDb) {
+            return CalibrationStep.Done(currentGainDb.coerceIn(minGainDb, maxGainDb), speechDbfs - measuredNoiseDbfs)
         }
 
         val atMaxGain = currentGainDb >= maxGainDb - GAIN_EPSILON_DB
-        val audible = measuredNoiseDbfs >= ambientDbfs + AUDIBLE_MARGIN_DB
         if (atMaxGain && !audible) return CalibrationStep.Fail(CalibrationFailure.NOISE_NOT_AUDIBLE)
 
+        val error = max(targetNoiseDbfs, audibleLevel) - measuredNoiseDbfs
         val required = currentGainDb + error
         var nextGain = required.coerceIn(minGainDb, maxGainDb)
         if (required > maxGainDb) {
@@ -82,6 +108,8 @@ class CalibrationSolver(
             if (!worthTryingMax) return CalibrationStep.Fail(CalibrationFailure.NEED_MORE_VOLUME)
             nextGain = maxGainDb
         }
+        val atMinGain = currentGainDb <= minGainDb + GAIN_EPSILON_DB
+        if (atMinGain && required < minGainDb) return CalibrationStep.Fail(CalibrationFailure.NEED_LESS_VOLUME)
 
         if (iterations >= maxIterations) return CalibrationStep.Fail(CalibrationFailure.NOT_CONVERGING)
         if (abs(nextGain - currentGainDb) < GAIN_EPSILON_DB) return CalibrationStep.Fail(CalibrationFailure.NOT_CONVERGING)

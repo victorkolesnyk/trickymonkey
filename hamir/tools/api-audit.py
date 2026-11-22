@@ -64,30 +64,69 @@ def has_member(cls, member):
     return any(has_member(s, member) for s in parents)
 
 
+def scan(files):
+    """Returns (refs: {(class, member): owners}, supers: {app class: superclass})."""
+    refs, supers = {}, {}
+    for f in files:
+        owner = os.path.basename(f)[:-6]
+        if owner == "R" or owner.startswith("R$"):
+            continue
+        this = None
+        for line in javap(["-v", "-p", f]).splitlines():
+            m = re.search(r"this_class: #\d+\s+// (\S+)", line)
+            if m:
+                this = m.group(1)
+                continue
+            m = re.search(r"super_class: #\d+\s+// (\S+)", line)
+            if m and this:
+                supers[this] = m.group(1)
+                continue
+            m = re.search(r"= (Methodref|InterfaceMethodref|Fieldref|Class)\s+\S+\s+// +(\S+)", line)
+            if not m:
+                continue
+            kind, ref = m.groups()
+            ref = ref.replace('"', "")
+            if kind == "Class":
+                cls, member = ref, None
+                if cls.startswith("["):
+                    cls = cls.lstrip("[")
+                    if not cls.startswith("L"):
+                        continue
+                    cls = cls[1:].rstrip(";")
+            else:
+                cls, member = ref.split(".", 1)
+            refs.setdefault((cls, member), set()).add(owner)
+    return refs, supers
+
+
 def main():
     dirs = [a for a in sys.argv[1:] if not a.startswith("--")]
     files = []
     for d in dirs:
         for root, _, names in os.walk(d):
             files += [os.path.join(root, n) for n in names if n.endswith(".class")]
+    raw, supers = scan(files)
     refs = {}
-    for f in files:
-        owner = os.path.basename(f)[:-6]
-        if owner == "R" or owner.startswith("R$"):
+    for (cls, member), owners in raw.items():
+        # A call such as ProtectionService.startForeground(...) is declared on an app class
+        # but resolves in the platform: walk up to the first platform ancestor.
+        via = cls
+        while via in supers:
+            via = supers[via]
+        if not via.startswith(PREFIXES):
             continue
-        for line in javap(["-v", "-p", f]).splitlines():
-            m = re.search(r"= (Methodref|InterfaceMethodref|Fieldref|Class)\s+\S+\s+// +\"?([^\s\"]+)\"?", line)
-            if not m:
+        if via != cls:
+            if member is None or member.startswith("<init>"):
                 continue
-            kind, ref = m.groups()
-            if kind == "Class":
-                cls, member = ref.lstrip("[L").rstrip(";"), None
-            else:
-                cls, member = ref.split(".", 1)
-                member = member.replace('"', "")
-            if cls.startswith("[") or not cls.startswith(PREFIXES):
+            local = javap_members(cls, dirs)
+            hop = cls
+            declared = False
+            while hop in supers and not declared:
+                declared = member in javap_members(hop, dirs)
+                hop = supers[hop]
+            if declared:
                 continue
-            refs.setdefault((cls, member), set()).add(owner)
+        refs.setdefault((via, member), set()).update(owners)
     missing_classes, missing_members = {}, {}
     for (cls, member), owners in sorted(refs.items(), key=lambda kv: (kv[0][0], kv[0][1] or "")):
         if stub_class(cls) is None:
@@ -100,9 +139,29 @@ def main():
         print(f"{cls}    <- {', '.join(sorted(owners))}")
     print("\n== members not in public API 23 (added later or hidden) ==")
     for (cls, member), owners in sorted(missing_members.items()):
-        if cls in missing_classes:
-            continue
         print(f"{cls}.{member}    <- {', '.join(sorted(owners))}")
+
+
+@functools.lru_cache(maxsize=None)
+def _members_cached(cls, dirs):
+    for d in dirs:
+        for root, _, names in os.walk(d):
+            if os.path.join(root, os.path.basename(cls) + ".class").endswith(cls + ".class") and os.path.basename(cls) + ".class" in names:
+                out = javap(["-p", "-s", os.path.join(root, os.path.basename(cls) + ".class")])
+                members, decl = set(), None
+                for l in (x.strip() for x in out.splitlines()):
+                    if l.startswith("descriptor:") and decl:
+                        nm = decl.split("(")[0].split()[-1] if "(" in decl else decl.rstrip(";").split()[-1]
+                        members.add(nm + ":" + l.split(":", 1)[1].strip())
+                        decl = None
+                    elif l.endswith(";"):
+                        decl = l
+                return frozenset(members)
+    return frozenset()
+
+
+def javap_members(cls, dirs):
+    return _members_cached(cls, tuple(dirs))
 
 
 if __name__ == "__main__":

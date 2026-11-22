@@ -29,9 +29,12 @@ object Cli {
           --seconds N         length of the output
           --voices N          simultaneous voices (default 8)
           --seed S            make the output reproducible (default: SecureRandom)
-          --min-seg ms        shortest fragment (default 400)
+          --min-seg ms        shortest fragment, at least ${BabbleGenerator.MIN_SEGMENT_MS} (default 400)
           --max-seg ms        longest fragment (default 2000)
           --speed-jitter x    playback speed spread, 0.06 = +-6% (default 0.06)
+
+        Every speaker needs at least voices x max-seg x (1 + speed-jitter) of speech
+        (17 s with the defaults); speakers with less are left out.
     """.trimIndent()
 
     private class UsageException(message: String) : Exception(message)
@@ -83,7 +86,10 @@ object Cli {
                     ?: throw UsageException("--seconds must be a positive number, got '$value'")
                 "--voices" -> config = config.copy(voices = positiveInt(option, value))
                 "--seed" -> seed = value.toLongOrNull() ?: throw UsageException("--seed must be an integer, got '$value'")
-                "--min-seg" -> config = config.copy(minSegmentMs = positiveInt(option, value))
+                "--min-seg" -> config = config.copy(
+                    minSegmentMs = positiveInt(option, value).takeIf { it >= BabbleGenerator.MIN_SEGMENT_MS }
+                        ?: throw UsageException("--min-seg must be at least ${BabbleGenerator.MIN_SEGMENT_MS}, got '$value'"),
+                )
                 "--max-seg" -> config = config.copy(maxSegmentMs = positiveInt(option, value))
                 "--speed-jitter" -> config = config.copy(
                     speedJitter = value.toDoubleOrNull()?.takeIf { it >= 0.0 && it <= 0.5 }
@@ -121,6 +127,21 @@ object Cli {
             banks.add(bank)
         }
         if (banks.all { it.segmentCount == 0 }) throw IOException("no usable speech found in the input")
+        val required = VoiceBank.requiredSpeechSeconds(config)
+        if (banks.none { it.isUsable(config) }) {
+            throw IOException(
+                String.format(
+                    Locale.ROOT,
+                    "not enough speech: these settings need %.1f s per speaker (add recordings, or lower --voices or --max-seg)",
+                    required,
+                ),
+            )
+        }
+        for (b in banks.indices) {
+            if (!banks[b].isUsable(config)) {
+                out.println(String.format(Locale.ROOT, "%s: left out, less than the required %.1f s of speech", inputs[b].path, required))
+            }
+        }
 
         val random: Random = if (seed != null) Random(seed) else SecureRandom()
         val generator = BabbleGenerator(banks, config, random)

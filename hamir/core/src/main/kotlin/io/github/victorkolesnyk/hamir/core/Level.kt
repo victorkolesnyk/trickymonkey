@@ -39,25 +39,18 @@ object Level {
      * Level of speech-active frames only (pauses excluded), in dBFS.
      * Used for the "speech" side of the SNR so that pauses do not lower the estimate.
      *
-     * Frames are 20 ms long. A frame counts as speech when its power is within 15.9 dB (the
-     * ITU-T P.56 margin) of the mean power of all louder frames, see [SpeechActivity.analyse].
-     * A steady signal is therefore fully active and the result equals its RMS level; a few loud
-     * clicks (under 200 ms in total) that tower above everything else are ignored.
+     * Follows ITU-T P.56 in spirit. Frames are 20 ms long. A frame is speech when its power is
+     * within 15.9 dB of the mean power of all louder frames and stands clear of the noise floor of
+     * the buffer (see [SpeechActivity.analyse]); pauses of up to 200 ms between speech frames count
+     * as part of the speech. A steady signal is therefore fully active and the result equals its
+     * RMS level; a few loud clicks (under 200 ms in total) that tower above everything else are ignored.
+     * The result is the level of speech plus whatever ambient noise sounds at the same time.
      */
     fun activeSpeechDbfs(samples: ShortArray, sampleRate: Int = SAMPLE_RATE): Double {
         require(sampleRate > 0) { "sampleRate must be positive" }
-        val powers = SpeechActivity.framePowers(samples, sampleRate)
-        val activity = SpeechActivity.analyse(powers)
-        var sum = 0.0
-        var count = 0
-        for (p in powers) {
-            if (activity.isActive(p)) {
-                sum += p
-                count++
-            }
-        }
-        if (count == 0) return SILENCE_DBFS
-        return powerToDbfs(sum / count)
+        val measurement = SpeechActivity.measure(SpeechActivity.framePowers(samples, sampleRate))
+        if (measurement.frames == 0) return SILENCE_DBFS
+        return powerToDbfs(measurement.power)
     }
 
     /** Fraction of samples at or within 1% of full scale, 0.0..1.0. */

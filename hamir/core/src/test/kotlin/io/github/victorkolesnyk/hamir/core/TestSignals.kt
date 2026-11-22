@@ -165,6 +165,150 @@ object TestSignals {
         return out
     }
 
+    enum class SpeechModel {
+        /** Syllable stream of [utterance] without breath pauses: gaps of 10..130 ms only. */
+        SYLLABLES,
+
+        /** Low-passed noise with a 3..6 Hz syllabic amplitude modulation of random depth. */
+        MODULATED_NOISE,
+
+        /** Constant-level tone. */
+        FLAT_TONE,
+    }
+
+    class NoisyCase(
+        val samples: ShortArray,
+        /** Level of the clean speech over its known segments (their internal short gaps included). */
+        val speechDbfs: Double,
+        /** Ambient noise level. */
+        val ambientDbfs: Double,
+        /** Share of the buffer covered by speech segments. */
+        val speechShare: Double,
+        /** Sample ranges [from, to) of the speech segments. */
+        val segments: List<IntRange>,
+        /**
+         * Level of the clean speech over the sounding samples only, i.e. without the 10..130 ms gaps
+         * between syllables and words. Equal to [speechDbfs] for the models that have no such gaps.
+         */
+        val soundingDbfs: Double,
+    )
+
+    /**
+     * A buffer of [seconds] with one to three speech segments covering 20..80% of it over stationary
+     * white noise 10..30 dB below the speech level (or exactly [ambientBelowDb]). The segments are
+     * separated by at least 0.3 s. The speech level is exact by construction: the clean speech is
+     * scaled so that its mean power over the segments is [NoisyCase.speechDbfs].
+     */
+    fun speechInNoise(
+        seed: Long,
+        model: SpeechModel,
+        seconds: Double = 8.0,
+        ambientBelowDb: Double? = null,
+        rate: Int = SAMPLE_RATE,
+    ): NoisyCase {
+        // java.util.Random gives nearly the same first values for neighbouring seeds: scramble them.
+        var mixed = (seed + 1) * -0x61c8864680b583ebL
+        mixed = (mixed xor (mixed ushr 30)) * -0x40a7b892e31b1a47L
+        mixed = (mixed xor (mixed ushr 27)) * -0x6b2fb644ecceee15L
+        val random = Random(mixed xor (mixed ushr 31))
+        val total = (seconds * rate).roundToInt()
+        val share = 0.2 + 0.6 * random.nextDouble()
+        val speechDbfs = -40.0 + 25.0 * random.nextDouble()
+        val below = ambientBelowDb ?: (10.0 + 20.0 * random.nextDouble())
+        val speechSamples = (share * total).roundToInt()
+        val minGap = (0.3 * rate).toInt()
+        var count = 1 + random.nextInt(3)
+        while (count > 1 && (speechSamples / count < 0.4 * rate || total - speechSamples < (count - 1) * minGap)) count--
+        // Random split of the speech and of the spare silence.
+        val lengths = IntArray(count)
+        var left = speechSamples
+        for (i in 0 until count) {
+            val minimum = (0.4 * rate).toInt()
+            val spare = left - minimum * (count - i)
+            lengths[i] = if (i == count - 1) left else minimum + (spare * random.nextDouble()).toInt()
+            left -= lengths[i]
+        }
+        val spareSilence = total - speechSamples - (count - 1) * minGap
+        val gapWeights = DoubleArray(count + 1) { random.nextDouble() }
+        val weightSum = gapWeights.sum()
+        val clean = FloatArray(total)
+        val segments = ArrayList<IntRange>()
+        val sounding = BooleanArray(total)
+        var position = 0
+        for (i in 0 until count) {
+            position += (spareSilence * gapWeights[i] / weightSum).toInt() + if (i > 0) minGap else 0
+            val part = when (model) {
+                SpeechModel.SYLLABLES -> phrase(random, lengths[i], rate, sounding, position)
+                SpeechModel.MODULATED_NOISE -> modulatedNoise(random, lengths[i], rate)
+                SpeechModel.FLAT_TONE -> FloatArray(lengths[i]) { sin(2.0 * PI * 220.0 * it / rate).toFloat() }
+            }
+            System.arraycopy(part, 0, clean, position, lengths[i])
+            if (model != SpeechModel.SYLLABLES) java.util.Arrays.fill(sounding, position, position + lengths[i], true)
+            segments.add(position until position + lengths[i])
+            position += lengths[i]
+        }
+        var energy = 0.0
+        for (segment in segments) for (i in segment) energy += clean[i].toDouble() * clean[i]
+        val scale = amplitude(speechDbfs) / Math.sqrt(energy / speechSamples)
+        val noise = amplitude(speechDbfs - below)
+        val samples = ShortArray(total) {
+            (clean[it] * scale + random.nextGaussian() * noise).roundToInt().coerceIn(-32768, 32767).toShort()
+        }
+        val soundingSamples = sounding.count { it }
+        val soundingDbfs = speechDbfs + 10.0 * log10(speechSamples.toDouble() / soundingSamples)
+        return NoisyCase(samples, speechDbfs, speechDbfs - below, share, segments, soundingDbfs)
+    }
+
+    /** Exactly [length] samples of syllables and fricatives with short gaps, starting and ending on a syllable. */
+    private fun phrase(random: Random, length: Int, rate: Int, sounding: BooleanArray, offset: Int): FloatArray {
+        val out = FloatArray(length)
+        var position = 0
+        var syllablesLeftInWord = 1 + random.nextInt(4)
+        while (position < length) {
+            if (random.nextDouble() < 0.3) {
+                val burst = fricative(random, rate)
+                if (position + burst.size < length) {
+                    System.arraycopy(burst, 0, out, position, burst.size)
+                    java.util.Arrays.fill(sounding, offset + position, offset + position + burst.size, true)
+                    position += burst.size
+                }
+            }
+            val remaining = length - position
+            var seconds = 0.09 + 0.17 * random.nextDouble()
+            // Do not leave a tail too short for a syllable of its own.
+            if (remaining < (seconds + 0.2) * rate) seconds = remaining.toDouble() / rate
+            val syllable = syllable(random, seconds, rate, 120.0, 8.0)
+            val n = minOf(syllable.size, remaining)
+            System.arraycopy(syllable, 0, out, position, n)
+            java.util.Arrays.fill(sounding, offset + position, offset + position + n, true)
+            position += n
+            if (position >= length) break
+            syllablesLeftInWord--
+            val gap = if (syllablesLeftInWord > 0) {
+                0.01 + 0.04 * random.nextDouble()
+            } else {
+                syllablesLeftInWord = 1 + random.nextInt(4)
+                0.05 + 0.08 * random.nextDouble()
+            }
+            position += (gap * rate).toInt()
+        }
+        return out
+    }
+
+    private fun modulatedNoise(random: Random, length: Int, rate: Int): FloatArray {
+        val out = FloatArray(length)
+        val modulationHz = 3.0 + 3.0 * random.nextDouble()
+        val depth = 0.5 + 0.5 * random.nextDouble()
+        val phase = 2.0 * PI * random.nextDouble()
+        var state = 0.0
+        for (i in 0 until length) {
+            state += 0.15 * (random.nextGaussian() - state)
+            val envelope = 1.0 - depth * (0.5 + 0.5 * cos(2.0 * PI * modulationHz * i / rate + phase))
+            out[i] = (state * envelope).toFloat()
+        }
+        return out
+    }
+
     private fun resonance(f: Double, centre: Double, width: Double): Double {
         val d = (f - centre) / width
         return exp(-0.5 * d * d)
