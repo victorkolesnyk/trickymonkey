@@ -1,6 +1,10 @@
 package io.github.victorkolesnyk.hamir.core
 
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
+import javax.crypto.Cipher
 import javax.crypto.SecretKey
+import javax.crypto.spec.GCMParameterSpec
 
 /**
  * On-disk format of one encrypted take:
@@ -11,8 +15,46 @@ import javax.crypto.SecretKey
  * cipher.iv): Android Keystore keys reject caller-supplied IVs by default.
  */
 object BankCodec {
-    fun encrypt(pcm: ShortArray, key: SecretKey): ByteArray = TODO()
+    private const val TRANSFORMATION = "AES/GCM/NoPadding"
+    private const val IV_BYTES = 12
+    private const val TAG_BITS = 128
+    private val MAGIC = byteArrayOf('H'.code.toByte(), 'M'.code.toByte(), 'R'.code.toByte(), '1'.code.toByte())
+    private val HEADER_BYTES = MAGIC.size + IV_BYTES
+
+    fun encrypt(pcm: ShortArray, key: SecretKey): ByteArray {
+        val plain = ByteArray(pcm.size * 2)
+        ByteBuffer.wrap(plain).order(ByteOrder.LITTLE_ENDIAN).asShortBuffer().put(pcm)
+        val cipher = Cipher.getInstance(TRANSFORMATION)
+        cipher.init(Cipher.ENCRYPT_MODE, key)
+        val iv = cipher.iv
+        check(iv != null && iv.size == IV_BYTES) { "cipher produced an IV of ${iv?.size} bytes, expected $IV_BYTES" }
+        cipher.updateAAD(MAGIC)
+        val encrypted = cipher.doFinal(plain)
+        plain.fill(0)
+        val out = ByteArray(HEADER_BYTES + encrypted.size)
+        System.arraycopy(MAGIC, 0, out, 0, MAGIC.size)
+        System.arraycopy(iv, 0, out, MAGIC.size, IV_BYTES)
+        System.arraycopy(encrypted, 0, out, HEADER_BYTES, encrypted.size)
+        return out
+    }
 
     /** @throws java.security.GeneralSecurityException on wrong key or tampered data, IllegalArgumentException on bad header. */
-    fun decrypt(data: ByteArray, key: SecretKey): ShortArray = TODO()
+    fun decrypt(data: ByteArray, key: SecretKey): ShortArray {
+        require(data.size >= HEADER_BYTES + TAG_BITS / 8) { "not a HMR1 file: only ${data.size} bytes" }
+        for (i in MAGIC.indices) {
+            require(data[i] == MAGIC[i]) { "not a HMR1 file: bad magic" }
+        }
+        val cipher = Cipher.getInstance(TRANSFORMATION)
+        cipher.init(Cipher.DECRYPT_MODE, key, GCMParameterSpec(TAG_BITS, data, MAGIC.size, IV_BYTES))
+        cipher.updateAAD(MAGIC)
+        val plain = cipher.doFinal(data, HEADER_BYTES, data.size - HEADER_BYTES)
+        try {
+            require(plain.size % 2 == 0) { "decrypted payload is not PCM16: odd length ${plain.size}" }
+            val pcm = ShortArray(plain.size / 2)
+            ByteBuffer.wrap(plain).order(ByteOrder.LITTLE_ENDIAN).asShortBuffer().get(pcm)
+            return pcm
+        } finally {
+            plain.fill(0)
+        }
+    }
 }
