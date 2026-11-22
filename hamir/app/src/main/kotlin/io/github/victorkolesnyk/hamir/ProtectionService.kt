@@ -57,6 +57,9 @@ class ProtectionService : Service() {
     /** True from the start request until [finish]. */
     private var active = false
 
+    /** Manual level chosen while the bank was still loading; applied when playback starts. */
+    private var pendingManualGainDb: Double? = null
+
     /** Cancels the bank loading of the current start; replaced on every start. */
     private var loadCancel = AtomicBoolean(false)
 
@@ -120,7 +123,7 @@ class ProtectionService : Service() {
             } else {
                 Deps.protectionState.value = ProtectionState(ProtectionStatus.STOPPED, stopReason = StopReason.INTERRUPTED)
                 if (restartedBySystem) alertStopped(StopReason.INTERRUPTED)
-                clearActiveFlag()
+                writeActiveFlag(false)
                 stopSelf()
             }
             return false
@@ -128,6 +131,7 @@ class ProtectionService : Service() {
         if (active) return true
 
         active = true
+        pendingManualGainDb = null
         acquireWakeLock()
         registerNoisyReceiver()
         val cancel = AtomicBoolean(false)
@@ -182,7 +186,6 @@ class ProtectionService : Service() {
             } else {
                 failure = StopReason.NOT_ENOUGH_VOICE
             }
-            if (failure == null) repository.update { it.copy(protectionActive = true) }
         } catch (e: Throwable) {
             failure = StopReason.VOICE_UNREADABLE
             generator = null
@@ -200,7 +203,14 @@ class ProtectionService : Service() {
         }
     }
 
-    private fun startPlayback(generator: BabbleGenerator, newPlan: ProtectionPlan, record: CalibrationRecord?) {
+    private fun startPlayback(generator: BabbleGenerator, loadedPlan: ProtectionPlan, record: CalibrationRecord?) {
+        val pending = pendingManualGainDb
+        pendingManualGainDb = null
+        val newPlan = if (pending != null && loadedPlan.mode == GainMode.MANUAL) {
+            loadedPlan.copy(gainDb = pending)
+        } else {
+            loadedPlan
+        }
         plan = newPlan
         calibration = record
         val newPlayer = BabblePlayer(generator, newPlan.gainDb) {
@@ -209,6 +219,7 @@ class ProtectionService : Service() {
         }
         player = newPlayer
         newPlayer.start()
+        writeActiveFlag(true)
         val state = ProtectionState(
             status = ProtectionStatus.RUNNING,
             warnings = currentWarnings(newPlan, record, newPlayer),
@@ -226,7 +237,12 @@ class ProtectionService : Service() {
         activePlan: ProtectionPlan, record: CalibrationRecord?, activePlayer: BabblePlayer,
     ): Set<ProtectionWarning> {
         val audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
-        val volume = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
+        // A muted stream keeps its index, so treat it as volume zero.
+        val volume = if (audioManager.isStreamMute(AudioManager.STREAM_MUSIC)) {
+            0
+        } else {
+            audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
+        }
         val route = AudioRoutes.current(audioManager, activePlayer.routedDeviceType())
         return MismatchDetector.check(activePlan, record, volume, route)
     }
@@ -246,7 +262,12 @@ class ProtectionService : Service() {
 
     private fun applyManualGain(gainDb: Double) {
         val activePlan = plan
-        if (activePlan == null || activePlan.mode != GainMode.MANUAL) return
+        if (activePlan == null) {
+            // Still loading: remember the value, the plan decides later whether it applies.
+            pendingManualGainDb = gainDb
+            return
+        }
+        if (activePlan.mode != GainMode.MANUAL) return
         plan = activePlan.copy(gainDb = gainDb)
         player?.gainDb = gainDb
         val old = Deps.protectionState.value
@@ -282,7 +303,7 @@ class ProtectionService : Service() {
         calibration = null
 
         Deps.protectionState.value = ProtectionState(ProtectionStatus.STOPPED, stopReason = reason)
-        clearActiveFlag()
+        writeActiveFlag(false)
         if (reason != StopReason.USER) alertStopped(reason)
 
         stopForeground(STOP_FOREGROUND_REMOVE)
@@ -290,11 +311,15 @@ class ProtectionService : Service() {
         if (!fromDestroy) stopSelf()
     }
 
-    private fun clearActiveFlag() {
+    /**
+     * Persists "protection is on" so that a killed process can be noticed later.
+     * Always written through the serial [Deps.io] executor, so set and clear cannot overtake each other.
+     */
+    private fun writeActiveFlag(value: Boolean) {
         val app = applicationContext
         Deps.io.execute {
             try {
-                Deps.settings(app).update { it.copy(protectionActive = false) }
+                Deps.settings(app).update { it.copy(protectionActive = value) }
             } catch (e: Exception) {
                 // Only the "interrupted" hint on the main screen depends on this flag.
             }

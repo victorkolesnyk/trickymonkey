@@ -92,32 +92,43 @@ class BabblePlayer(
         }
         var audioTrack: AudioTrack? = null
         try {
-            audioTrack = createTrack()
-            bufferFrames = audioTrack.bufferSizeInFrames
-            track = audioTrack
-            audioTrack.play()
-
+            audioTrack = openTrack()
             val chunk = ShortArray(CHUNK_SAMPLES)
             val envelope = FadeEnvelope(FADE_SAMPLES)
             var appliedGainDb = gainDb
+            var restarts = 0
+            var chunksSinceRestart = 0
             while (!killed) {
                 if (stopRequested) envelope.beginFadeOut()
                 generator.read(chunk, 0, chunk.size)
                 appliedGainDb = PcmMath.slew(appliedGainDb, gainDb, MAX_GAIN_STEP_DB)
                 Gain.apply(chunk, 0, chunk.size, appliedGainDb)
                 envelope.process(chunk, 0, chunk.size)
-                writeFully(audioTrack, chunk)
+                if (!writeFully(audioTrack!!, chunk)) {
+                    // The audio server dropped the track (it restarted, or the output went away).
+                    // Recreate it instead of giving up; a track that keeps dying is a real error.
+                    if (++restarts > MAX_TRACK_RESTARTS) throw IllegalStateException("AudioTrack keeps dying")
+                    track = null
+                    val dead = audioTrack
+                    audioTrack = null
+                    dead.release()
+                    audioTrack = openTrack()
+                    chunksSinceRestart = 0
+                    continue
+                }
+                if (++chunksSinceRestart >= STABLE_CHUNKS) restarts = 0
                 if (envelope.finished) break
             }
+            val current: AudioTrack = audioTrack
             if (!killed) {
                 // Push the faded tail out of the track buffer with silence, so release() cuts nothing audible.
                 java.util.Arrays.fill(chunk, 0.toShort())
                 var padded = 0
                 while (padded < bufferFrames && !killed) {
-                    writeFully(audioTrack, chunk)
+                    if (!writeFully(current, chunk)) break
                     padded += chunk.size
                 }
-                audioTrack.stop()
+                current.stop()
             }
         } catch (e: Throwable) {
             if (!killed && !stopRequested) onError(e)
@@ -131,14 +142,37 @@ class BabblePlayer(
         }
     }
 
-    private fun writeFully(audioTrack: AudioTrack, data: ShortArray) {
+    private fun openTrack(): AudioTrack {
+        val audioTrack = createTrack()
+        try {
+            bufferFrames = audioTrack.bufferSizeInFrames
+            audioTrack.play()
+        } catch (e: RuntimeException) {
+            audioTrack.release()
+            throw e
+        }
+        track = audioTrack
+        return audioTrack
+    }
+
+    /** Writes the whole chunk. Returns false when the track died and has to be recreated. */
+    private fun writeFully(audioTrack: AudioTrack, data: ShortArray): Boolean {
         var offset = 0
+        var stalled = 0
         while (offset < data.size && !killed) {
             val written = audioTrack.write(data, offset, data.size - offset)
+            if (written == AudioTrack.ERROR_DEAD_OBJECT) return false
             if (written < 0) throw IllegalStateException("AudioTrack.write returned $written")
-            if (written == 0) Thread.sleep(5)
+            if (written == 0) {
+                // A playing track in blocking mode always takes data; one that does not is not audible.
+                if (++stalled > MAX_STALLED_WRITES) throw IllegalStateException("AudioTrack accepts no data")
+                Thread.sleep(5)
+            } else {
+                stalled = 0
+            }
             offset += written
         }
+        return true
     }
 
     private fun createTrack(): AudioTrack {
@@ -178,6 +212,13 @@ class BabblePlayer(
         const val CHUNK_MS = 20
         const val CHUNK_SAMPLES = SAMPLE_RATE * CHUNK_MS / 1000
         const val MAX_GAIN_STEP_DB = 3.0
+        private const val MAX_TRACK_RESTARTS = 3
+
+        /** About two seconds without progress. */
+        private const val MAX_STALLED_WRITES = 400
+
+        /** Five seconds of uninterrupted playback: after that an earlier restart is forgotten. */
+        private const val STABLE_CHUNKS = 5000 / CHUNK_MS
 
         /** Time until a gain change of [deltaDb] is fully applied and has left the track buffer. */
         fun settleMs(deltaDb: Double, bufferFrames: Int): Int {

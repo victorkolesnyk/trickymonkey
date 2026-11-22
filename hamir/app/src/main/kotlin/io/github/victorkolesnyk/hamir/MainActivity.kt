@@ -119,8 +119,8 @@ class MainActivity : BaseActivity() {
                 val gain = seekToGain(progress)
                 manualValueView.text = getString(R.string.manual_gain_label, formatDb(gain, signed = true))
                 // Live change while the noise plays; persisted when the finger lifts.
-                val state = Deps.protectionState.value
-                if (state.status == ProtectionStatus.RUNNING && state.mode == GainMode.MANUAL) {
+                // The slider is only visible without a calibration, i.e. in manual mode.
+                if (Deps.protectionState.value.active) {
                     ProtectionService.setManualGain(this@MainActivity, gain)
                 }
             }

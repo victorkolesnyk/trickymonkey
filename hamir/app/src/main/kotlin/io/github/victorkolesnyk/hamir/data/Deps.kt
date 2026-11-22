@@ -13,7 +13,11 @@ import java.io.File
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 
-/** SharedPreferences as a string map. Values are written with apply(), i.e. flushed asynchronously. */
+/**
+ * SharedPreferences as a string map. Callers are always on a worker thread, so values are written
+ * with commit(): apply() would make the framework flush pending writes on the UI thread when an
+ * activity or service stops.
+ */
 class PrefsStore(private val prefs: SharedPreferences) : KeyValueStore {
     override fun read(): Map<String, String> {
         val out = HashMap<String, String>()
@@ -26,7 +30,7 @@ class PrefsStore(private val prefs: SharedPreferences) : KeyValueStore {
         for ((key, value) in changes) {
             if (value == null) editor.remove(key) else editor.putString(key, value)
         }
-        editor.apply()
+        editor.commit()
     }
 }
 
