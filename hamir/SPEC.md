@@ -123,9 +123,18 @@ Android-застосунок, що грає персоналізований ш�
 
 ## 9. Дані й приватність
 
-- Записи: filesDir/bank/<A|B>/<NNN>.hmr, формат BankCodec, ключ AES-256 в AndroidKeyStore
-  (alias "hamir_bank_v1", GCM, без вимоги автентифікації користувача).
+- Записи: filesDir/bank/<A|B>/<NNN>.hmr, формат BankCodec.
+- Ключі (рішення архітектора, версія 0.2.0; замінює вимогу 0.1 шифрувати кожен запис ключем Keystore, бо
+  AES-GCM у Keystore надто повільний для сотні записів): конвертне шифрування. Записи шифрує випадковий
+  256-бітний ключ даних (SecretKeySpec "AES"). Ключ даних загорнуто ключем AES-256 з AndroidKeyStore
+  (alias "hamir_bank_v1", GCM, IV генерує шифр, без вимоги автентифікації користувача) і збережено у
+  filesDir/bank/key.bin: "HMK1" | 12 байтів IV | шифротекст ключа + тег 16 байтів; "HMK1" є також
+  асоційованими даними GCM; запис атомарний. Розгорнутий ключ даних кешується в пам'яті на час життя процесу.
+- «Видалити всі голосові дані» видаляє записи, key.bin і ключ Keystore.
+- Якщо key.bin відсутній або не розгортається, а файли .hmr існують, застосунок повідомляє, що голосові дані
+  неможливо прочитати і їх треба видалити й записати знову. Новий ключ поверх наявних записів не створюється.
 - android:allowBackup="false", android:dataExtractionRules / fullBackupContent, що виключають усе.
+- android:allowAudioPlaybackCapture="false": інші застосунки не отримують шум через захоплення відтворення.
 - Дозволи: RECORD_AUDIO (лише запис фраз і калібрування; служба захисту мікрофон не відкриває),
   FOREGROUND_SERVICE, FOREGROUND_SERVICE_MEDIA_PLAYBACK, POST_NOTIFICATIONS, WAKE_LOCK, VIBRATE,
   MODIFY_AUDIO_SETTINGS лише якщо справді потрібен.
