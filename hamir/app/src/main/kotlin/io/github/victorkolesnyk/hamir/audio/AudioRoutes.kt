@@ -1,5 +1,7 @@
 package io.github.victorkolesnyk.hamir.audio
 
+import android.app.NotificationManager
+import android.content.Context
 import android.media.AudioDeviceInfo
 import android.media.AudioManager
 import io.github.victorkolesnyk.hamir.logic.OutputRoute
@@ -31,6 +33,17 @@ object AudioRoutes {
         AudioDeviceInfo.TYPE_BUILTIN_EARPIECE -> OutputRoute.SPEAKER
 
         else -> OutputRoute.OTHER
+    }
+
+    /**
+     * True in Do Not Disturb "total silence" (INTERRUPTION_FILTER_NONE, API 23): media players are muted
+     * although the stream volume is unchanged, and notifications and vibration are blocked as well.
+     */
+    fun totalSilence(context: Context): Boolean = try {
+        val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        manager.currentInterruptionFilter == NotificationManager.INTERRUPTION_FILTER_NONE
+    } catch (e: RuntimeException) {
+        false
     }
 
     /**

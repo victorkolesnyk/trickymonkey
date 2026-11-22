@@ -41,6 +41,7 @@ import io.github.victorkolesnyk.hamir.logic.ProtectionStatus
 import io.github.victorkolesnyk.hamir.logic.ProtectionWarning
 import io.github.victorkolesnyk.hamir.logic.RouteGuard
 import io.github.victorkolesnyk.hamir.logic.SilenceAlarm
+import io.github.victorkolesnyk.hamir.logic.StartGate
 import io.github.victorkolesnyk.hamir.logic.StopReason
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -215,6 +216,10 @@ class ProtectionService : Service() {
             if (loadCancel !== cancel || !active) return@post
             if (finalFailure != null || readyGenerator == null || readyPlan == null) {
                 finish(finalFailure ?: StopReason.VOICE_UNREADABLE)
+            } else if (StartGate.protection(voiceReady = true, AudioRoutes.totalSilence(this)) != null) {
+                // The main screen refuses this too; here it covers a system restart and a mode switched
+                // on while the bank was loading. Starting would play into a muted output with no way to warn.
+                finish(StopReason.DND_SILENCE)
             } else {
                 startPlayback(readyGenerator, readyPlan, loadedCalibration)
                 // The process was killed while the noise played and the system brought the service back:
@@ -281,8 +286,7 @@ class ProtectionService : Service() {
             // A muted stream keeps its index.
             streamMuted = audioManager.isStreamMute(AudioManager.STREAM_MUSIC),
             // "Total silence" mutes media players without touching the stream volume.
-            totalSilence = notificationManager().currentInterruptionFilter ==
-                NotificationManager.INTERRUPTION_FILTER_NONE,
+            totalSilence = AudioRoutes.totalSilence(this),
             // No guessing: the route type is judged only once the system has reported a real device.
             route = if (routeGuard.baselineKnown && routed != null) AudioRoutes.classify(routed.type) else null,
             routeUnknownTooLong = verdict == RouteGuard.Verdict.PENDING_TOO_LONG,
@@ -610,6 +614,7 @@ class ProtectionService : Service() {
             StopReason.USER -> R.string.stop_user
             StopReason.HEADSET_DISCONNECTED -> R.string.stop_headset
             StopReason.OUTPUT_CHANGED -> R.string.stop_output_changed
+            StopReason.DND_SILENCE -> R.string.start_blocked_dnd
             StopReason.NOT_ENOUGH_VOICE -> R.string.stop_not_enough_voice
             StopReason.VOICE_UNREADABLE -> R.string.stop_voice_unreadable
             StopReason.AUDIO_ERROR -> R.string.stop_audio_error

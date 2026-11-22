@@ -164,12 +164,19 @@ class BankStore(
     fun hasAnyTake(): Boolean = Profile.values().any { takeFiles(it).isNotEmpty() }
 
     /**
-     * A new key may only be created for an empty bank. If takes exist but their key is gone,
-     * writing with a fresh key would silently mix readable and unreadable takes: refuse instead,
-     * the user has to delete the voice data and record again.
+     * A new key may only be created for an empty bank. If takes exist but their key is missing or
+     * cannot be opened, writing with a fresh key would silently mix readable and unreadable takes:
+     * refuse instead. With no takes on disk nothing depends on the old key, so a key that cannot be
+     * opened is simply replaced.
      */
     private fun keyForWriting(): SecretKey {
-        keys.existingKey()?.let { return it }
+        val existing = try {
+            keys.existingKey()
+        } catch (e: BankKeyLostException) {
+            if (hasAnyTake()) throw e
+            null
+        }
+        if (existing != null) return existing
         if (hasAnyTake()) throw BankKeyLostException("takes exist but their key is missing")
         return keys.createKey()
     }

@@ -140,6 +140,28 @@ class ResourcesTest {
     }
 
     @Test
+    fun doNotDisturbAndKeyAdviceMatchWhatTheAppCanDo() {
+        val text = read("res/values/strings.xml")
+        fun value(name: String) =
+            Regex("<string name=\"$name\">(.*?)</string>", RegexOption.DOT_MATCHES_ALL).find(text)!!.groupValues[1]
+        // The alarm is promised for volume zero and mute only; for Do Not Disturb the guide says it is blocked.
+        val item5 = value("guide_placement").substringAfter("5. ").substringBefore("6. ")
+        val alarmSentence = item5.substringBefore("Режим «Не турбувати»")
+        assertTrue("ШУМУ НЕ ЧУТИ" in alarmSentence && "Не турбувати" !in alarmSentence)
+        val dndPart = item5.substringAfter("Режим «Не турбувати»")
+        assertTrue("блокує сповіщення й вібрацію" in dndPart)
+        assertTrue("Медіа" in dndPart && "не помітить" in dndPart)
+        assertTrue("Не турбувати" in value("start_blocked_dnd") && "Вимкніть" in value("start_blocked_dnd"))
+        // Key trouble: restart first, delete only as the second step.
+        for (name in listOf("stop_voice_unreadable", "cal_err_voice_unreadable", "notice_key_lost")) {
+            val advice = value(name)
+            val restart = advice.indexOf("Перезапустіть телефон")
+            val delete = advice.indexOf("видаліть усі голосові дані")
+            assertTrue(restart >= 0 && delete > restart, name)
+        }
+    }
+
+    @Test
     fun agreedSpellingIsUsed() {
         val text = read("res/values/strings.xml") + read("res/values/phrases.xml")
         for (wrong in listOf("телефона", "міні-динамік", "як звичайно", "отвором звуку", "вимір тиші", " з самого ранку")) {

@@ -1,5 +1,6 @@
 package io.github.victorkolesnyk.hamir
 
+import android.app.AlertDialog
 import android.content.Context
 import android.media.AudioManager
 import android.os.Bundle
@@ -93,7 +94,15 @@ class CalibrateActivity : BaseActivity() {
             Step.INTRO -> if (ensureMicPermission()) CalibrationController.begin(this)
             Step.AMBIENT_READY -> if (ensureMicPermission()) CalibrationController.startAmbient(this)
             Step.SPEECH_READY -> if (ensureMicPermission()) CalibrationController.startSpeech(this)
-            Step.NOISE_READY -> if (ensureMicPermission()) CalibrationController.startNoise(this)
+            Step.NOISE_READY -> if (ensureMicPermission() && CalibrationController.startNoise(this) != null) {
+                // The only refusal that leaves the step open is Do Not Disturb "total silence".
+                showTracked(
+                    AlertDialog.Builder(this)
+                        .setTitle(R.string.start_blocked_dnd_title)
+                        .setMessage(R.string.start_blocked_dnd)
+                        .setPositiveButton(R.string.action_ok, null)
+                )
+            }
             Step.FAILED -> CalibrationController.retryNoise()
             Step.DONE -> finish()
             Step.ERROR -> CalibrationController.reset()

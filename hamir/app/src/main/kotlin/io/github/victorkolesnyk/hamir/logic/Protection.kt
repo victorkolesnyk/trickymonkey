@@ -55,6 +55,30 @@ object ProtectionPlanner {
     }
 }
 
+/** Why the noise must not be started right now. */
+enum class StartBlock {
+    NOT_ENOUGH_VOICE,
+
+    /**
+     * Do Not Disturb "total silence": the system mutes the noise and also blocks the notification
+     * and the vibration the app would use to report it, so a silent failure could not be signalled.
+     */
+    DND_TOTAL_SILENCE,
+}
+
+object StartGate {
+    /** Check before protection starts. Null means it may start. */
+    fun protection(voiceReady: Boolean, totalSilence: Boolean): StartBlock? = when {
+        !voiceReady -> StartBlock.NOT_ENOUGH_VOICE
+        totalSilence -> StartBlock.DND_TOTAL_SILENCE
+        else -> null
+    }
+
+    /** Check before the calibration plays its noise: a muted measurement would only mislead. */
+    fun calibrationNoise(totalSilence: Boolean): StartBlock? =
+        if (totalSilence) StartBlock.DND_TOTAL_SILENCE else null
+}
+
 enum class ProtectionWarning {
     /** Manual mode: SNR has not been verified. */
     UNCALIBRATED,
@@ -215,6 +239,9 @@ enum class StopReason {
 
     /** The sound moved to another output device, or the output vanished ([RouteGuard]). */
     OUTPUT_CHANGED,
+
+    /** Refused to start: Do Not Disturb "total silence" is on ([StartGate]). */
+    DND_SILENCE,
     NOT_ENOUGH_VOICE,
 
     /** Takes exist but could not be decrypted or contain no usable speech. */

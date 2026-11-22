@@ -9,7 +9,12 @@ import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
 import javax.crypto.spec.SecretKeySpec
 
-/** The bank key is missing or cannot be opened while encrypted takes exist: they are unreadable for good. */
+/**
+ * The bank key is missing or cannot be opened. The cause may be permanent (key file or keystore key
+ * gone) or a passing keystore fault; the two are deliberately not told apart, because mistaking a
+ * passing fault for a permanent one would make the user delete recordings for nothing. The advice is
+ * therefore always: restart the phone first, delete and re-record only if that does not help.
+ */
 class BankKeyLostException(message: String, cause: Throwable? = null) : GeneralSecurityException(message, cause)
 
 /**
@@ -95,8 +100,9 @@ class EnvelopeKeyProvider(
             throw BankKeyLostException("cannot read the key file", e)
         } catch (e: GeneralSecurityException) {
             throw BankKeyLostException("cannot unwrap the data key", e)
-        } catch (e: IllegalArgumentException) {
-            throw BankKeyLostException("damaged key file", e)
+        } catch (e: RuntimeException) {
+            // IllegalArgumentException from a damaged file, or a provider failure inside the keystore.
+            throw BankKeyLostException("cannot open the data key", e)
         }
         return keep(raw)
     }

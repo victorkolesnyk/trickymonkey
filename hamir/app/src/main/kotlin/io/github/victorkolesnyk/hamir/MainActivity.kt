@@ -13,6 +13,7 @@ import android.widget.SeekBar
 import android.widget.Switch
 import android.widget.TextView
 import android.widget.Toast
+import io.github.victorkolesnyk.hamir.audio.AudioRoutes
 import io.github.victorkolesnyk.hamir.data.Deps
 import io.github.victorkolesnyk.hamir.logic.AppSettings
 import io.github.victorkolesnyk.hamir.logic.CalibrationRecord
@@ -24,6 +25,8 @@ import io.github.victorkolesnyk.hamir.logic.ProtectionPlanner
 import io.github.victorkolesnyk.hamir.logic.ProtectionState
 import io.github.victorkolesnyk.hamir.logic.ProtectionStatus
 import io.github.victorkolesnyk.hamir.logic.ProtectionWarning
+import io.github.victorkolesnyk.hamir.logic.StartBlock
+import io.github.victorkolesnyk.hamir.logic.StartGate
 import io.github.victorkolesnyk.hamir.logic.StopReason
 import java.text.DateFormat
 import java.util.Date
@@ -230,9 +233,21 @@ class MainActivity : BaseActivity() {
             return
         }
         val current = snapshot ?: return
-        if (!current.statsA.ready) {
-            Toast.makeText(this, R.string.main_need_voice, Toast.LENGTH_LONG).show()
-            return
+        when (StartGate.protection(current.statsA.ready, AudioRoutes.totalSilence(this))) {
+            StartBlock.NOT_ENOUGH_VOICE -> {
+                Toast.makeText(this, R.string.main_need_voice, Toast.LENGTH_LONG).show()
+                return
+            }
+            StartBlock.DND_TOTAL_SILENCE -> {
+                showTracked(
+                    AlertDialog.Builder(this)
+                        .setTitle(R.string.start_blocked_dnd_title)
+                        .setMessage(R.string.start_blocked_dnd)
+                        .setPositiveButton(R.string.action_ok, null)
+                )
+                return
+            }
+            null -> Unit
         }
         // POST_NOTIFICATIONS is a runtime permission since API 33; older versions need no request.
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&

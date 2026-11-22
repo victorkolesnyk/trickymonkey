@@ -184,6 +184,39 @@ class KeyEnvelopeTest {
     }
 
     @Test
+    fun keystoreFaultsOfAnyKindAreReportedAsKeyUnavailable() {
+        EnvelopeKeyProvider(keyFile, wrapping).createKey()
+        val faulty = object : WrappingKeySource {
+            override fun existing(): SecretKey? = throw java.security.ProviderException("keystore daemon failed")
+            override fun getOrCreate(): SecretKey = throw java.security.ProviderException("keystore daemon failed")
+            override fun delete() = Unit
+        }
+        assertFailsWith<BankKeyLostException> { EnvelopeKeyProvider(keyFile, faulty).existingKey() }
+        // The fault may pass: the key file must still be there for the next attempt.
+        assertTrue(keyFile.isFile)
+        assertNotNull(EnvelopeKeyProvider(keyFile, wrapping).existingKey())
+    }
+
+    @Test
+    fun damagedKeyFileIsReplacedOnlyWhileTheBankIsEmpty() {
+        val root = keyFile.parentFile
+        val first = BankStore(root, EnvelopeKeyProvider(keyFile, wrapping))
+        first.saveTake(Profile.A, 1, take(1000))
+        first.deleteTake(Profile.A, 1)
+        keyFile.writeBytes(ByteArray(KeyEnvelope.BLOB_BYTES))
+
+        val store = BankStore(root, EnvelopeKeyProvider(keyFile, wrapping))
+        store.saveTake(Profile.A, 1, take(700))
+        assertContentEquals(take(700), BankStore(root, EnvelopeKeyProvider(keyFile, wrapping)).loadTake(Profile.A, 1))
+
+        // With a take on disk the same damage must not be papered over.
+        keyFile.writeBytes(ByteArray(KeyEnvelope.BLOB_BYTES))
+        val later = BankStore(root, EnvelopeKeyProvider(keyFile, wrapping))
+        assertFailsWith<BankKeyLostException> { later.saveTake(Profile.A, 2, take(700)) }
+        assertEquals(KeyEnvelope.BLOB_BYTES.toLong(), keyFile.length())
+    }
+
+    @Test
     fun deleteRemovesFileCacheAndWrappingKey() {
         val provider = EnvelopeKeyProvider(keyFile, wrapping)
         val old = provider.createKey()

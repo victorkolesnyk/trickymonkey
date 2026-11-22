@@ -153,6 +153,23 @@ class ProtectionTest {
         assertFalse(MismatchDetector.hasMismatch(warnings))
     }
 
+    // ---------------------------------------------------------------- start gate
+
+    @Test
+    fun protectionStartsOnlyWithEnoughVoiceAndWithoutTotalSilence() {
+        assertEquals(null, StartGate.protection(voiceReady = true, totalSilence = false))
+        assertEquals(StartBlock.DND_TOTAL_SILENCE, StartGate.protection(voiceReady = true, totalSilence = true))
+        assertEquals(StartBlock.NOT_ENOUGH_VOICE, StartGate.protection(voiceReady = false, totalSilence = false))
+        // Without voice data there is nothing to start, whatever the mode: report that first.
+        assertEquals(StartBlock.NOT_ENOUGH_VOICE, StartGate.protection(voiceReady = false, totalSilence = true))
+    }
+
+    @Test
+    fun calibrationNoiseIsRefusedInTotalSilence() {
+        assertEquals(null, StartGate.calibrationNoise(totalSilence = false))
+        assertEquals(StartBlock.DND_TOTAL_SILENCE, StartGate.calibrationNoise(totalSilence = true))
+    }
+
     // ---------------------------------------------------------------- headline
 
     private fun running(mode: GainMode, vararg warnings: ProtectionWarning) =

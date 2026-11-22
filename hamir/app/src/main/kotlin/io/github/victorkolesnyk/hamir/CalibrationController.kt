@@ -24,6 +24,8 @@ import io.github.victorkolesnyk.hamir.logic.PlanResult
 import io.github.victorkolesnyk.hamir.logic.Profile
 import io.github.victorkolesnyk.hamir.logic.ProtectionPlanner
 import io.github.victorkolesnyk.hamir.logic.RouteGuard
+import io.github.victorkolesnyk.hamir.logic.StartBlock
+import io.github.victorkolesnyk.hamir.logic.StartGate
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
@@ -178,19 +180,25 @@ object CalibrationController {
     }
 
     /** Step 3: play the noise and search for the gain. */
-    fun startNoise(context: Context) {
+    /**
+     * @return the reason the noise was not started, or null when it was (or when the call was ignored).
+     * A refusal leaves the wizard on the same step, so silence and speech need not be measured again.
+     */
+    fun startNoise(context: Context): StartBlock? {
         val current = state.value
-        if (current.step != Step.NOISE_READY) return
+        if (current.step != Step.NOISE_READY) return null
         if (Deps.protectionState.value.active) {
             state.value = State(step = Step.ERROR, problem = Problem.PROTECTION_RUNNING)
-            return
+            return null
         }
+        StartGate.calibrationNoise(AudioRoutes.totalSilence(context))?.let { return it }
         val app = context.applicationContext
         val job = newJob()
         state.value = current.copy(
             step = Step.NOISE, progress = 0, iteration = 1, lastMeasuredDbfs = null, failure = null,
         )
         worker.execute { runGuarded(job) { runNoise(app, job) } }
+        return null
     }
 
     /** After a failed search: keep silence and speech, go back to the start of step 3. */

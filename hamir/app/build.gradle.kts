@@ -10,8 +10,8 @@ plugins {
 }
 
 val appId = "io.github.victorkolesnyk.hamir"
-val versionCodeValue = 2
-val versionNameValue = "0.2.0"
+val versionCodeValue = 3
+val versionNameValue = "0.2.1"
 val minSdk = 26
 val targetSdk = 34
 val androidAllVersion = "14-robolectric-10818077"

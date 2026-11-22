@@ -34,6 +34,7 @@ class MemoryKeyProvider : BankKeyProvider {
         val generator = KeyGenerator.getInstance("AES")
         generator.init(256)
         created++
+        broken = false
         return generator.generateKey().also { key = it }
     }
 
@@ -244,6 +245,17 @@ class BankStoreTest {
         assertTrue(store.loadAll(Profile.A).keyLost)
         assertFailsWith<BankKeyLostException> { store.saveTake(Profile.A, 2, take(100)) }
         assertFailsWith<BankKeyLostException> { store.loadTake(Profile.A, 1) }
+    }
+
+    @Test
+    fun keyThatCannotBeOpenedIsReplacedWhenNoTakesDependOnIt() {
+        store.saveTake(Profile.A, 1, take(100))
+        assertTrue(store.deleteTake(Profile.A, 1))
+        keys.broken = true
+        // Zero takes on disk: nothing can become unreadable, so a fresh key is safe.
+        store.saveTake(Profile.B, 3, take(200))
+        assertEquals(2, keys.created)
+        assertContentEquals(take(200), store.loadTake(Profile.B, 3))
     }
 
     @Test
