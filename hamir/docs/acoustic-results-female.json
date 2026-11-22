@@ -1,0 +1,76 @@
+{
+ "clean": {
+  "stoi": 1.0,
+  "wer_grammar": 5.3
+ },
+ "white@10dB": {
+  "stoi": 0.943,
+  "wer_grammar": 75.6
+ },
+ "white@5dB": {
+  "stoi": 0.879,
+  "wer_grammar": 100.0
+ },
+ "white@0dB": {
+  "stoi": 0.779,
+  "wer_grammar": 100.0
+ },
+ "white@-5dB": {
+  "stoi": 0.661,
+  "wer_grammar": 100.0
+ },
+ "generic_babble_8_voices@10dB": {
+  "stoi": 0.895,
+  "wer_grammar": 56.4
+ },
+ "generic_babble_8_voices@5dB": {
+  "stoi": 0.804,
+  "wer_grammar": 100.0
+ },
+ "generic_babble_8_voices@0dB": {
+  "stoi": 0.678,
+  "wer_grammar": 100.0
+ },
+ "generic_babble_8_voices@-5dB": {
+  "stoi": 0.527,
+  "wer_grammar": 100.0
+ },
+ "same_voice_whole_utterances_8@10dB": {
+  "stoi": 0.913,
+  "wer_grammar": 45.3
+ },
+ "same_voice_whole_utterances_8@5dB": {
+  "stoi": 0.821,
+  "wer_grammar": 100.0
+ },
+ "same_voice_whole_utterances_8@0dB": {
+  "stoi": 0.688,
+  "wer_grammar": 100.0
+ },
+ "same_voice_whole_utterances_8@-5dB": {
+  "stoi": 0.529,
+  "wer_grammar": 100.0
+ },
+ "hamir_cli@10dB": {
+  "stoi": 0.908,
+  "wer_grammar": 45.0
+ },
+ "hamir_cli@5dB": {
+  "stoi": 0.821,
+  "wer_grammar": 98.6
+ },
+ "hamir_cli@0dB": {
+  "stoi": 0.687,
+  "wer_grammar": 100.0
+ },
+ "hamir_cli@-5dB": {
+  "stoi": 0.533,
+  "wer_grammar": 100.0
+ },
+ "hamir_level": {
+  "long_term_dbfs": -20.05,
+  "min_500ms_rel_db": -0.76,
+  "max_500ms_rel_db": 0.57,
+  "peak": 0.638
+ }
+}
